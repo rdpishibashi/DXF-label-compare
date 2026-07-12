@@ -411,17 +411,31 @@ st.dataframe(styled, width='stretch', hide_index=True)
 
 ## 10. 完成チェックリスト
 
-- [ ] `.streamlit/config.toml` / `.gitignore` をコピー、`requirements.txt` 作成
-- [ ] `utils/compare_labels.py`（normalize_label / compare_labels / summarize）
-- [ ] `utils/excel_input.py`（load_total_labels、Total 欠如で ValueError）
-- [ ] `utils/excel_output.py`（サマリー＋差分、区分別 3 色、空欄セル、freeze/filter）
-- [ ] `app.py`（2 uploader・比較ボタン primary+disabled・Styler 色分け表示・DL primary）
-- [ ] 単体テスト（§7-1 の 1〜5）が pass
-- [ ] 実データで A のみ1847 / B のみ2714 / 両方819 / 合計5380 を再現
-- [ ] 実アプリ起動 → DL xlsx を openpyxl で開き行数・色書式まで検証
-- [ ] README.md 作成（Phase 3-2 ゲート）→ feature ブランチにコミット
+- [x] `.streamlit/config.toml` / `.gitignore` をコピー、`requirements.txt` 作成
+- [x] `utils/compare_labels.py`（normalize_label / compare_labels / summarize）
+- [x] `utils/excel_input.py`（load_total_labels、Total 欠如で ValueError）
+- [x] `utils/excel_output.py`（サマリー＋差分、区分別 3 色、空欄セル、freeze/filter）
+- [x] `app.py`（2 uploader・比較ボタン primary+disabled・Styler 色分け表示・DL primary）
+- [x] 単体テスト（§7-1 の 1〜5）が pass
+- [x] 実データで A のみ1847 / B のみ2714 / 両方819 / 合計5380 を再現
+- [x] 実アプリ起動 → DL xlsx を openpyxl で開き行数・色書式まで検証
+- [x] README.md 作成（Phase 3-2 ゲート）→ feature ブランチにコミット
 - [ ] main へ `--no-ff` マージ、中間生成物削除、push はユーザー確認後
+
+## 11. 実装時に判明した追加事項（sonnet 実装ログ）
+
+- **画面表示での `pd.NA` が `"None"` と表示される問題**: §6-4 で示した
+  `Styler.format(na_rep=...)` は、`st.dataframe`（Streamlit 1.54 の Arrow ベース
+  データグリッド）には効かないことが実機検証で判明した（`column_config.NumberColumn`
+  でも同様に抑制不可）。`A個数`/`B個数` を `pandas.Int64`（nullable整数型）にした上で、
+  **画面表示専用**に文字列化したコピー（欠損は空文字）を作り、それを `st.dataframe` に
+  渡す方式で解決した（`app.py` の `_for_display()`）。Excel 出力（`write_blank` 使用）
+  は最初から正しく空欄だったため影響なし。詳細は README.md「既知の制約」を参照。
+  - トレードオフ: 表示用コピーは文字列列になるため、数値の右寄せ（CSS
+    `text-align: right` は `st.dataframe` の Styler 経由では反映されない）は効かず
+    左寄せになる。spec に右寄せの明示要件は無かったため許容した。
 
 ---
 
 *作成: 2026-07-12 / Phase 1 担当（Opus）→ Phase 2 以降担当（sonnet）への引き継ぎ*
+*実装完了: 2026-07-12 / Phase 2〜Phase 3-2 まで sonnet が実施*
