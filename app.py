@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 
 from utils.excel_input import load_total_labels
 from utils.compare_labels import (
@@ -20,6 +21,21 @@ def _row_style(row):
     kubun = row['区分']
     css = f'background-color: {_BG[kubun]}; color: {_FG[kubun]}'
     return [css] * len(row)
+
+
+def _for_display(diff_df):
+    """画面表示用に A個数/B個数 を文字列化する（欠損は空文字）。
+
+    st.dataframe は Int64 列の pd.NA をグレーの "None" として描画してしまう
+    （Streamlit 1.54 のデータグリッドの仕様。Styler.format(na_rep=...) や
+    column_config.NumberColumn でも抑制できない）。表示専用のコピーで
+    文字列化し、欠損を空文字にすることで空欄として見せる。
+    Excel 出力側（utils/excel_output.py）は write_blank で別途正しく空欄化
+    しているため、この処理はダウンロードファイルには影響しない。"""
+    disp = diff_df.copy()
+    for col in ('A個数', 'B個数'):
+        disp[col] = disp[col].apply(lambda v: '' if pd.isna(v) else str(int(v)))
+    return disp
 
 
 def main():
@@ -73,7 +89,7 @@ def main():
             f"ユニーク合計: {summary['ユニーク合計']}件"
         )
 
-        styled = diff_df.style.apply(_row_style, axis=1)
+        styled = _for_display(diff_df).style.apply(_row_style, axis=1)
         st.dataframe(styled, width='stretch', hide_index=True)
 
         download_done = st.session_state.get('download_done', False)

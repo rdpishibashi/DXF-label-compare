@@ -41,7 +41,13 @@ def compare_labels(a: dict, b: dict) -> pd.DataFrame:
             'A個数': a.get(lbl, pd.NA),
             'B個数': b.get(lbl, pd.NA),
         })
-    return pd.DataFrame(rows, columns=DIFF_COLUMNS)
+    df = pd.DataFrame(rows, columns=DIFF_COLUMNS)
+    # 個数は pandas の nullable 整数型にする。素の object dtype のままだと
+    # st.dataframe（Arrow経由の描画）で pd.NA が文字列 "None" として
+    # 表示されてしまうため（Excel出力側は write_blank で別途空欄化している）。
+    df['A個数'] = df['A個数'].astype('Int64')
+    df['B個数'] = df['B個数'].astype('Int64')
+    return df
 
 
 def summarize(df: pd.DataFrame, a_name: str, b_name: str) -> dict:
