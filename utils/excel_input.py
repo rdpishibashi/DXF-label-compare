@@ -28,5 +28,5 @@ def load_total_labels(file_bytes: bytes) -> dict:
         if pd.isna(lbl):
             continue
         key = normalize_label(str(lbl))
-        agg[key] = agg.get(key, 0) + (int(cnt) if pd.notna(cnt) else 0)
+        agg[key] = agg.get(key, 0) + int(cnt)
     return agg
