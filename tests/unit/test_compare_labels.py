@@ -80,3 +80,16 @@ def test_summarize_counts_are_consistent():
     assert summary['B ユニークラベル数'] == 3
     assert summary['ユニーク合計'] == 4
     assert summary['ユニーク合計'] == len(df)
+    assert 'B 絞り込み条件' not in summary
+
+
+def test_summarize_includes_b_filter_mode_when_provided():
+    a = {'CN1': 2}
+    b = {'CN1': 5}
+    df = compare_labels(a, b)
+    summary = summarize(df, 'A.xlsx', 'B.xlsx', b_filter_mode='UNIT内結線図のみ')
+
+    assert summary['B 絞り込み条件'] == 'UNIT内結線図のみ'
+    # 挿入位置: B ファイル名の直後
+    keys = list(summary.keys())
+    assert keys.index('B 絞り込み条件') == keys.index('B ファイル名') + 1

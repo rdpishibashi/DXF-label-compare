@@ -50,18 +50,27 @@ def compare_labels(a: dict, b: dict) -> pd.DataFrame:
     return df
 
 
-def summarize(df: pd.DataFrame, a_name: str, b_name: str) -> dict:
-    """サマリー用の件数集計を返す。"""
+def summarize(df: pd.DataFrame, a_name: str, b_name: str, b_filter_mode: str = None) -> dict:
+    """サマリー用の件数集計を返す。
+
+    b_filter_mode を指定すると、B側の図番フィルタ条件（'B 絞り込み条件'）を
+    'B ファイル名' の直後に記録する（未指定時は省略）。
+    """
     a_only = int((df['区分'] == KUBUN_A_ONLY).sum())
     b_only = int((df['区分'] == KUBUN_B_ONLY).sum())
     both = int((df['区分'] == KUBUN_BOTH).sum())
-    return {
+    result = {
         'A ファイル名': a_name,
         'B ファイル名': b_name,
+    }
+    if b_filter_mode is not None:
+        result['B 絞り込み条件'] = b_filter_mode
+    result.update({
         'A ユニークラベル数': both + a_only,
         'B ユニークラベル数': both + b_only,
         'A のみ': a_only,
         'B のみ': b_only,
         '両方': both,
         'ユニーク合計': len(df),
-    }
+    })
+    return result
