@@ -1,0 +1,427 @@
+# DXF-label-compare 実装仕様書（sonnet 引き継ぎ用）
+
+このドキュメントは、`DXF-label-compare` アプリを **ゼロから実装する担当（sonnet モデル）**
+向けの、自己完結した実装指示です。この 1 ファイルと、下記スキル・参照プロジェクトだけで
+実装〜テスト〜Git 統合まで完了できるように書いてあります。
+
+> **前提の役割分担**: Phase 1（事前調査・仕様確定）は完了済み。あなた（sonnet）は
+> **Phase 2（実装）以降**を担当する。仕様はユーザー承認済みなので、仕様自体の
+> 再確認は不要。実装を進めてよい。判断に迷う箇所のみユーザーへ確認する。
+
+---
+
+## 0. 最初に読むもの
+
+1. `~/.claude/skills/dev-workflow/` （このスキルの Phase 2・Phase 3 手順に従う）
+2. `~/.claude/skills/streamlit/` （UI 実装パターン。**特に §2 width, §3 アップロード,
+   §4 Excel 出力, §6 セッション状態, §11 テーマ/ボタン, §12 動作確認, §13 落とし穴**）
+3. `../CLAUDE.md`（Tools 共通ガイド。Excel 出力パターン・色分け規約）
+4. 参照実装プロジェクト: `../DXF-extract-labels/`
+   - `.streamlit/config.toml`, `.gitignore`, `requirements.txt`, `utils/` 構成、
+     `app.py` のボタン/セッション/ダウンロードの書き方を**踏襲**する
+
+---
+
+## 1. 目的とスコープ
+
+`DXF-extract-labels` が出力した **2 つの Excel（A・B）の `Total` シートのラベルを比較**し、
+差分（A のみ／B のみ／両方）を Excel として出力する Streamlit アプリ。
+
+- 入力: Excel 2 個（A 用・B 用）
+- 比較対象: 各 Excel の **`Total` シートの `ラベル` 列のみ**（`個数` は比較しないが出力する）
+- 出力: 差分 Excel（差分シート＋サマリーシート）＋ 画面での色分け表示
+- **単一アクション型ツール**（入力→実行→結果の 1 往復）。Step 番号見出しは付けない
+  （streamlit スキル §11）。
+
+---
+
+## 2. 入力仕様（`Total` シートの実構造）
+
+`DXF-extract-labels` の出力 Excel は `Summary` / `Total` / 図番ごとの個別シートを持つ。
+本アプリが読むのは **`Total` シートのみ**。実測した構造:
+
+| 列名 | 内容 | 本アプリでの扱い |
+|------|------|-----------------|
+| `ラベル` | ラベル文字列 | 比較キー（正規化後）・出力する |
+| `個数` | 出現総数（int） | 比較しない・出力する（A個数/B個数） |
+| `図番` | 出現図番のカンマ区切り | **読み込むが出力しない** |
+
+- ヘッダーは 1 行目。データは 2 行目以降。
+- **`Total` シート内でラベルは既にユニーク**（実測: 重複ゼロ・空欄ゼロ）。ただし
+  正規化（§3）で別ラベルが同一化する可能性があるため、**正規化後キーで `個数` を
+  合算**して安全にユニーク化すること。
+- `Total` シートが存在しない Excel をアップロードした場合は、`ValueError` を送出し、
+  `app.py` 側で `st.error("...には Total シートがありません")` を表示する
+  （処理は止める）。列 `ラベル`・`個数` が無い場合も同様にエラー。
+
+---
+
+## 3. 正規化・比較ルール（重要）
+
+### 3-1. ラベル正規化（比較前に必ず適用）
+
+**全角 ASCII 文字があれば半角に変換**してから比較する（ユーザー指定:「日本語以外の
+ラベルは、全角があれば半角にして比較」）。日本語（ひらがな・カタカナ・漢字）は変換しない。
+
+- 変換対象: 全角 ASCII `U+FF01–U+FF5E` → 半角 `U+0021–U+007E`（`ord - 0xFEE0`）、
+  全角スペース `U+3000` → 半角スペース `U+0020`
+- 変換しない: ひらがな・カタカナ・漢字・その他の文字はそのまま
+- 文字単位で適用する（混在ラベル `ＣＮ１番` → `CN1番` のように、ASCII 部分だけ半角化）
+
+```python
+def normalize_label(s: str) -> str:
+    """全角ASCII(U+FF01-FF5E)を半角に、全角スペースを半角スペースに変換する。
+    日本語文字（かな・カナ・漢字）は変換しない。"""
+    out = []
+    for ch in s:
+        o = ord(ch)
+        if 0xFF01 <= o <= 0xFF5E:
+            out.append(chr(o - 0xFEE0))
+        elif o == 0x3000:
+            out.append(' ')
+        else:
+            out.append(ch)
+    return ''.join(out)
+```
+
+> 注: `unicodedata.normalize('NFKC', s)` は使わない。NFKC は半角カナ→全角カナ変換や
+> 合字分解など**日本語側にも副作用**があるため。上記の限定的な変換のみ行う。
+
+### 3-2. 比較ルール
+
+- ラベルの**完全一致**（正規化後の文字列が等しいかどうか）。
+- `個数` は比較に使わない。「両方」に分類されたラベルで A個数 と B個数 が異なっていても、
+  差分としてフラグは立てない（区分は「両方」のまま）。
+- 表示・出力するラベル文字列は **正規化後（半角化後）の形**を使う（比較キーと一致させる）。
+
+### 3-3. 区分
+
+正規化後キーの集合演算で 3 分類:
+
+| 区分ラベル | 条件 |
+|-----------|------|
+| `A のみ` | A に存在し B に無い |
+| `B のみ` | B に存在し A に無い |
+| `両方` | A・B 両方に存在 |
+
+---
+
+## 4. 出力仕様
+
+### 4-1. 差分シート（シート名: `差分`）
+
+- **1 枚に全ラベルを列挙**。`ラベル` で**昇順ソート**（Python 既定の文字列ソート＝
+  コードポイント順。`DXF-extract-labels` と同じ方針）。
+- 列（この順・この名前）:
+
+  | ラベル | 区分 | A個数 | B個数 |
+  |--------|------|-------|-------|
+
+  - `A個数`/`B個数` は、その側に無いラベルでは**空欄**（Excel はセル未書き込み or `""`、
+    DataFrame では `pd.NA`）。
+- **行の色分け**（区分に応じて全 4 列の背景色を変える。ユーザー指定の配色）:
+
+  | 区分 | 色 | 背景 hex | 文字 hex |
+  |------|----|---------|---------|
+  | `両方` | 緑 | `#C6EFCE` | `#006100` |
+  | `A のみ` | 青 | `#D9E1F2` | `#1F4E79` |
+  | `B のみ` | 茶色 | `#E2CFC0` | `#7F4F24` |
+
+  （背景は薄色・文字は濃色で可読性を確保。この hex を既定とする。）
+- ヘッダー: 太字・背景 `#4472C4`・白文字（Tools 共通の Excel ヘッダー書式）。
+- `freeze_panes(1, 0)` で見出し行固定。列幅は内容に合わせて調整（`ラベル` は広め）。
+- オートフィルタ（`autofilter`）を付けてよい。
+
+### 4-2. サマリーシート（シート名: `サマリー`、差分シートより前に配置）
+
+2 列（`項目`・`値`）で以下を出力:
+
+| 項目 | 値（例: 339 vs 405 の実測ベースライン） |
+|------|------|
+| A ファイル名 | （アップロード時の元ファイル名） |
+| B ファイル名 | （同上） |
+| A ユニークラベル数 | 2666 |
+| B ユニークラベル数 | 3533 |
+| A のみ | 1847 |
+| B のみ | 2714 |
+| 両方 | 819 |
+| ユニーク合計 | 5380 |
+
+### 4-3. 画面表示
+
+- 差分テーブルを `st.dataframe` で表示。**§4-1 と同じ色分け**を `pandas.Styler`
+  （`background-color` / `color` を返す関数）で適用。`hide_index=True`、`width='stretch'`。
+- サマリー件数は `st.info` などで簡潔に併記してよい。
+- Excel ダウンロードは `st.download_button`（`type="primary"`, `width='stretch'`,
+  mime は xlsx）。既定ファイル名 `label_compare.xlsx`。
+
+---
+
+## 5. ファイル構成（3 層構造）
+
+`DXF-extract-labels` に倣い、モデル層（比較ロジック）を Streamlit 非依存の純関数で切り出す。
+
+```
+DXF-label-compare/
+├── app.py                    # View層: Streamlit UI（薄く保つ）
+├── requirements.txt
+├── .gitignore                # ../DXF-extract-labels/.gitignore をコピー
+├── .streamlit/
+│   └── config.toml           # ../DXF-extract-labels/.streamlit/config.toml と同一
+├── utils/
+│   ├── __init__.py           # 空ファイル
+│   ├── excel_input.py        # Model層: Total シート読み込み → 正規化 dict
+│   ├── compare_labels.py     # Model層: 正規化・差分・サマリー（純関数・テスト対象）
+│   └── excel_output.py       # Model層: 差分 Excel 生成
+├── tests/
+│   └── unit/
+│       └── test_compare_labels.py
+├── docs/
+│   └── IMPLEMENTATION_SPEC.md # 本ファイル（実装後、内容は README/docs に反映してよい）
+└── README.md                 # 日本語ドキュメント
+```
+
+`requirements.txt`（ezdxf は不要。入力は Excel）:
+
+```
+streamlit>=1.40.0
+pandas>=2.0.0
+openpyxl>=3.1.0
+xlsxwriter>=3.0.0
+```
+
+`.streamlit/config.toml` と `.gitignore` は参照プロジェクトからコピー:
+
+```bash
+cp ../DXF-extract-labels/.streamlit/config.toml .streamlit/config.toml
+cp ../DXF-extract-labels/.gitignore .gitignore
+```
+
+---
+
+## 6. 各モジュールの責務と関数シグネチャ（参考実装つき）
+
+### 6-1. `utils/compare_labels.py`（純関数・単体テストの主対象）
+
+```python
+import pandas as pd
+
+def normalize_label(s: str) -> str:
+    ...  # §3-1 の実装をそのまま
+
+def compare_labels(a: dict[str, int], b: dict[str, int]) -> pd.DataFrame:
+    """正規化済みの {ラベル: 個数} 2 つを比較し、差分 DataFrame を返す。
+    - columns: ['ラベル', '区分', 'A個数', 'B個数']（この順）
+    - 区分 ∈ {'A のみ', 'B のみ', '両方'}
+    - 無い側の個数は pd.NA
+    - ラベル昇順（sorted）
+    """
+    labels = sorted(set(a) | set(b))
+    rows = []
+    for lbl in labels:
+        in_a, in_b = lbl in a, lbl in b
+        kubun = '両方' if (in_a and in_b) else ('A のみ' if in_a else 'B のみ')
+        rows.append({
+            'ラベル': lbl,
+            '区分': kubun,
+            'A個数': a.get(lbl, pd.NA),
+            'B個数': b.get(lbl, pd.NA),
+        })
+    return pd.DataFrame(rows, columns=['ラベル', '区分', 'A個数', 'B個数'])
+
+def summarize(df: pd.DataFrame, a_name: str, b_name: str) -> dict:
+    """サマリー用の件数集計を返す。"""
+    a_only = int((df['区分'] == 'A のみ').sum())
+    b_only = int((df['区分'] == 'B のみ').sum())
+    both   = int((df['区分'] == '両方').sum())
+    return {
+        'A ファイル名': a_name,
+        'B ファイル名': b_name,
+        'A ユニークラベル数': both + a_only,
+        'B ユニークラベル数': both + b_only,
+        'A のみ': a_only,
+        'B のみ': b_only,
+        '両方': both,
+        'ユニーク合計': len(df),
+    }
+```
+
+### 6-2. `utils/excel_input.py`
+
+```python
+import io
+import pandas as pd
+from utils.compare_labels import normalize_label
+
+REQUIRED_SHEET = 'Total'
+
+def load_total_labels(file_bytes: bytes) -> dict[str, int]:
+    """Excel の Total シートを読み、正規化ラベル → 合計個数 の dict を返す。
+    Total シートが無い / 必要な列が無い場合は ValueError。"""
+    xls = pd.ExcelFile(io.BytesIO(file_bytes))
+    if REQUIRED_SHEET not in xls.sheet_names:
+        raise ValueError(f"'{REQUIRED_SHEET}' シートが見つかりません")
+    df = xls.parse(REQUIRED_SHEET)
+    if 'ラベル' not in df.columns or '個数' not in df.columns:
+        raise ValueError("Total シートに『ラベル』『個数』列がありません")
+    agg: dict[str, int] = {}
+    for lbl, cnt in zip(df['ラベル'], df['個数']):
+        if pd.isna(lbl):
+            continue
+        key = normalize_label(str(lbl))
+        agg[key] = agg.get(key, 0) + (int(cnt) if pd.notna(cnt) else 0)
+    return agg
+```
+> `st.cache_data` を使う場合は `file_bytes: bytes` を引数にする（streamlit スキル §5。
+> アンダースコア引数は使わない）。
+
+### 6-3. `utils/excel_output.py`
+
+- `xlsxwriter` エンジンで `サマリー`→`差分` の順に書く。
+- 区分ごとの `workbook.add_format({'bg_color': ..., 'font_color': ...})` を 3 つ用意し、
+  各データ行を区分に応じた書式で 4 列とも書き込む（§4-1 の hex）。
+- ヘッダー書式・列幅・`freeze_panes(1,0)`・`autofilter`。
+- 戻り値は `bytes`（`io.BytesIO().getvalue()`）。streamlit スキル §4 の
+  `create_excel` パターンに従う。
+- **空欄セル**（無い側の個数）は書き込まない or `''` を書く（数値 0 を書かないこと。
+  「0 個」と「存在しない」を区別するため空欄にする）。
+
+### 6-4. `app.py`（View 層・薄く）
+
+- `st.set_page_config(page_title="DXF Label Compare", page_icon="🔍", layout="wide")`
+- 2 つの `st.file_uploader`（`type=['xlsx']`, 各 1 ファイル）。ラベル例:
+  「A: 比較元の Excel（extract-labels 出力）」「B: 比較先の Excel」
+- `比較` ボタン: `type="primary"`, `disabled=（A・B 両方が揃っていないと無効）`。
+- 実行時: `load_total_labels` を A・B に適用 → `compare_labels` → 結果を
+  `st.session_state` に保存（`UploadedFile` は 1 rerun で失効するため、
+  `uploaded.getvalue()` で bytes 化してから渡す。streamlit スキル §3・§6）。
+- 結果表示: Styler で色分けした `st.dataframe` ＋ サマリー ＋ ダウンロードボタン。
+- 元ファイル名は `uploaded.name` で保持し、サマリー・DL に使う。
+- エラーは `try/except ValueError` で `st.error` 表示。
+
+Styler の色分け（画面表示用）:
+
+```python
+_BG = {'両方': '#C6EFCE', 'A のみ': '#D9E1F2', 'B のみ': '#E2CFC0'}
+_FG = {'両方': '#006100', 'A のみ': '#1F4E79', 'B のみ': '#7F4F24'}
+
+def _row_style(row):
+    k = row['区分']
+    css = f'background-color: {_BG[k]}; color: {_FG[k]}'
+    return [css] * len(row)
+
+styled = df.style.apply(_row_style, axis=1)
+st.dataframe(styled, width='stretch', hide_index=True)
+```
+
+---
+
+## 7. テスト
+
+### 7-1. 単体テスト `tests/unit/test_compare_labels.py`
+
+最低限、以下を検証:
+
+1. **基本の区分**:
+   ```python
+   a = {'CN1': 2, 'R10': 1, 'ABC': 3}
+   b = {'CN1': 5, 'X1': 1, 'ABC': 4}
+   df = compare_labels(a, b)
+   # A のみ: R10 / B のみ: X1 / 両方: ABC, CN1
+   # ソート順: ABC, CN1, R10, X1
+   ```
+   - 区分の割り当て、A個数/B個数 の値、無い側が pd.NA、ソート順を assert。
+2. **個数が違っても両方**: `a={'ABC':1}`, `b={'ABC':99}` → 区分 `両方`。
+3. **正規化（全角→半角）**: `normalize_label('ＣＮ１') == 'CN1'`、
+   `normalize_label('AB１２') == 'AB12'`、`normalize_label('あ　い') == 'あ い'`
+   （全角スペース→半角、かなは不変）、`normalize_label('抵抗Ｒ') == '抵抗R'`。
+4. **正規化による同一化と個数合算**: `excel_input` レベル、または dict 構築時に
+   `ＣＮ１`（全角）と `CN1`（半角）が同一キーに合算されること。
+5. **`summarize`** の件数が整合すること。
+
+`pytest tests/unit/ -v` で実行。
+
+### 7-2. ブラックボックステスト（実データ・期待値ベースライン）
+
+ユーザー提供の実ファイル 2 つを A・B として使う:
+
+- A = `/Users/ryozo/Downloads/extracted_labels-339_Unit内結線図.xlsx`
+- B = `/Users/ryozo/Downloads/extracted_labels-405_展開接続図.xlsx`
+
+**期待される集計値（この 2 ファイルで検証済み・正規化適用後）**:
+
+| 項目 | 値 |
+|------|-----|
+| A ユニークラベル数 | 2666 |
+| B ユニークラベル数 | 3533 |
+| A のみ | 1847 |
+| B のみ | 2714 |
+| 両方 | 819 |
+| ユニーク合計（差分シート行数） | 5380 |
+
+- まずモデル層だけで（Streamlit を起動せず）上記の値が再現することを確認する。
+- 次に streamlit スキル §12 の手順で実アプリを起動し（`chromium-cli` が無ければ
+  Playwright + `channel="chrome"` のフォールバック）、両ファイルをアップロード→
+  「比較」→ ダウンロードした xlsx を `openpyxl` で開き、**シート構成・行数(5380)・
+  区分ごとの件数・色書式**まで検証する。スクリーンショットの目視だけで終わらせない。
+- 注: この 2 ファイルには全角 ASCII ラベルは存在しないため、正規化の有無で件数は
+  変わらない（正規化ロジックの検証は §7-1 の単体テストで担保する）。
+
+回帰テストとして残す場合は `tests/regression/` に保存し、実行前にユーザーへ確認する
+（dev-workflow Phase 2-4）。
+
+---
+
+## 8. 実装の組み合わせ表（dev-workflow Phase 2-1・必須）
+
+今回の変更が触れるコードパスの直積。すべて新規実装なので「影響あり＝要テスト」。
+
+| 軸: 入力状態 \ 区分 | A のみ | B のみ | 両方 |
+|---|---|---|---|
+| 通常ラベル | 要テスト(§7-1 #1) | 要テスト(§7-1 #1) | 要テスト(§7-1 #1) |
+| 個数が異なる | ― | ― | 要テスト(§7-1 #2) |
+| 全角ASCII含む | 要テスト(§7-1 #3,#4) | 要テスト(§7-1 #3,#4) | 要テスト(§7-1 #3,#4) |
+| 実データ全体 | 1847(§7-2) | 2714(§7-2) | 819(§7-2) |
+
+異常系: `Total` 無し / 列不足 → `ValueError` → `st.error`（app 側で確認）。
+
+---
+
+## 9. Git ワークフロー（dev-workflow Phase 1-5・Phase 3）
+
+このフォルダはまだ git 未初期化（Tools 配下の各サブフォルダは独立 repo）。
+
+1. **Phase 1-5**: `git init` → 初期コミット（空 or この spec のみ）→
+   作業ブランチ `git checkout -b feature/initial-implementation` →
+   `git tag baseline-YYYYMMDD`。リモート未設定なので fetch/pull はスキップ。
+2. **Phase 2**: 小さいステップでコミット（動作確認済みのみ）。モデル層→出力→UI の順。
+3. **Phase 3-2（必須ゲート・main マージ前）**: `README.md` を日本語で作成し、
+   `docs/` を整備。`ls *.md docs/*.md` で対象を列挙し、各ファイルを更新してから 3-3 へ。
+   - `README.md`: 目的・使い方・入出力・Total シート前提・正規化ルール・配色を記載。
+   - この `IMPLEMENTATION_SPEC.md` は実装後 `docs/OVERVIEW.md` 等へ発展させるか、
+     README に要点を吸収したうえで残置してよい。
+4. **Phase 3-3**: `main` へ `--no-ff` マージ。
+5. **Phase 3-5**: push はユーザー確認後（リモート未設定ならセットアップをユーザーに案内）。
+
+> 参照元 `../CLAUDE.md` の「共有 `utils/extract_labels.py`」の伝播ルールは
+> **本アプリには無関係**（extract_labels を使わない）。新規の独立コードなので
+> 他プロジェクトへの伝播は不要。
+
+---
+
+## 10. 完成チェックリスト
+
+- [ ] `.streamlit/config.toml` / `.gitignore` をコピー、`requirements.txt` 作成
+- [ ] `utils/compare_labels.py`（normalize_label / compare_labels / summarize）
+- [ ] `utils/excel_input.py`（load_total_labels、Total 欠如で ValueError）
+- [ ] `utils/excel_output.py`（サマリー＋差分、区分別 3 色、空欄セル、freeze/filter）
+- [ ] `app.py`（2 uploader・比較ボタン primary+disabled・Styler 色分け表示・DL primary）
+- [ ] 単体テスト（§7-1 の 1〜5）が pass
+- [ ] 実データで A のみ1847 / B のみ2714 / 両方819 / 合計5380 を再現
+- [ ] 実アプリ起動 → DL xlsx を openpyxl で開き行数・色書式まで検証
+- [ ] README.md 作成（Phase 3-2 ゲート）→ feature ブランチにコミット
+- [ ] main へ `--no-ff` マージ、中間生成物削除、push はユーザー確認後
+
+---
+
+*作成: 2026-07-12 / Phase 1 担当（Opus）→ Phase 2 以降担当（sonnet）への引き継ぎ*
