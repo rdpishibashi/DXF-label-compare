@@ -10,12 +10,10 @@ from utils.drawing_filter import (
     select_drawing_numbers, aggregate_filtered_rows,
     FILTER_UNIT_ONLY, FILTER_OPTIONS,
 )
+from utils.same_workbook import compare_within_workbook, list_label_sheets
+from utils.same_workbook_output import create_same_workbook_output
 
-st.set_page_config(
-    page_title="DXF Label Compare",
-    page_icon="🔍",
-    layout="wide",
-)
+st.set_page_config(page_title="DXF Label Compare", page_icon="🔍", layout="wide")
 
 _BG = {KUBUN_BOTH: '#C6EFCE', KUBUN_A_ONLY: '#D9E1F2', KUBUN_B_ONLY: '#E2CFC0'}
 _FG = {KUBUN_BOTH: '#006100', KUBUN_A_ONLY: '#1F4E79', KUBUN_B_ONLY: '#7F4F24'}
@@ -28,102 +26,124 @@ def _row_style(row):
 
 
 def _for_display(diff_df):
-    """画面表示用に A個数/B個数 を文字列化する（欠損は空文字）。
-
-    st.dataframe は Int64 列の pd.NA をグレーの "None" として描画してしまう
-    （Streamlit 1.54 のデータグリッドの仕様。Styler.format(na_rep=...) や
-    column_config.NumberColumn でも抑制できない）。表示専用のコピーで
-    文字列化し、欠損を空文字にすることで空欄として見せる。
-    Excel 出力側（utils/excel_output.py）は write_blank で別途正しく空欄化
-    しているため、この処理はダウンロードファイルには影響しない。"""
+    """画面表示用に欠損の個数を空欄にする。"""
     disp = diff_df.copy()
     for col in ('A個数', 'B個数'):
-        disp[col] = disp[col].apply(lambda v: '' if pd.isna(v) else str(int(v)))
+        disp[col] = disp[col].apply(lambda value: '' if pd.isna(value) else str(int(value)))
     return disp
 
 
-def main():
-    st.title("DXF Label Compare")
+def _show_same_workbook_comparison():
+    st.subheader("同じExcel内で比較")
     st.caption(
-        "DXF-extract-labels が出力した2つのExcel（Totalシート）のラベルを比較し、"
-        "差分（Aのみ・Bのみ・両方）をExcelで出力します。"
+        "DXF-extract-labels が出力した1つのExcelを指定し、Bにする個別図面シートを選びます。"
+        " Aは Summary のタイトルに「UNIT内結線図」を含む全図番から自動作成します。"
+    )
+    uploaded = st.file_uploader("抽出ラベルExcel", type=['xlsx'], key='same_workbook_file')
+    if uploaded is None:
+        return
+
+    workbook_bytes = uploaded.getvalue()
+    try:
+        label_sheets = list_label_sheets(workbook_bytes)
+    except Exception as error:
+        st.error(f"Excelを読み込めません: {error}")
+        return
+    if not label_sheets:
+        st.error("個別図面のラベルシート（「ラベル」「個数」列）が見つかりません。")
+        return
+
+    b_sheet_name = st.selectbox("B：比較するシート", label_sheets, key='same_workbook_b_sheet')
+    if st.button("同じExcel内で比較", type='primary', key='same_workbook_run'):
+        try:
+            result = compare_within_workbook(workbook_bytes, b_sheet_name)
+            st.session_state['same_workbook_result'] = result
+            st.session_state['same_workbook_file_name'] = uploaded.name
+            st.session_state['same_workbook_output'] = create_same_workbook_output(result)
+        except ValueError as error:
+            st.error(f"比較できません: {error}")
+            return
+
+    result = st.session_state.get('same_workbook_result')
+    if result is None:
+        return
+    st.divider()
+    st.subheader("結果")
+    summary = result['summary']
+    st.info(
+        f"A 対象図番: {summary['A 対象図番数']}件　/　"
+        f"共通: {summary['共通ラベル数']}件　/　"
+        f"A のみ: {summary['A のみ']}件　/　B のみ: {summary['B のみ']}件"
+    )
+    st.dataframe(result['comparison'], width='stretch', hide_index=True)
+    st.download_button(
+        label="比較結果Excelをダウンロード",
+        data=st.session_state['same_workbook_output'],
+        file_name=f"label_comparison_UNIT内結線図_vs_{result['b_sheet_name']}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        type='primary',
+        width='stretch',
+        key='same_workbook_download',
     )
 
+
+def _show_two_workbook_comparison():
+    st.subheader("2つのExcelを比較")
+    st.caption("従来機能：Aの Total シートと、Bの UNIT内結線図群の Total ラベルを比較します。")
     col_a, col_b = st.columns(2)
     with col_a:
-        file_a = st.file_uploader(
-            "A: 展開接続図", type=['xlsx'], key='uploader_a',
-        )
+        file_a = st.file_uploader("A: 展開接続図", type=['xlsx'], key='uploader_a')
     with col_b:
-        file_b = st.file_uploader(
-            "B: UNIT内結線図", type=['xlsx'], key='uploader_b',
-        )
+        file_b = st.file_uploader("B: UNIT内結線図", type=['xlsx'], key='uploader_b')
         filter_mode = FILTER_UNIT_ONLY
         if file_b is not None:
-            filter_mode = st.radio(
-                "対象範囲（Bのタイトルで絞り込み）",
-                FILTER_OPTIONS,
-                index=0,
-                key='b_filter_mode',
-                horizontal=True,
-            )
+            filter_mode = st.radio("対象範囲（Bのタイトルで絞り込み）", FILTER_OPTIONS, index=0,
+                                   key='b_filter_mode', horizontal=True)
 
-    has_input = file_a is not None and file_b is not None
-    run = st.button("比較", type="primary", disabled=not has_input)
-
-    if run:
+    if st.button("2つのExcelを比較", type='primary', disabled=file_a is None or file_b is None,
+                 key='two_workbook_run'):
         try:
             labels_a = load_total_labels(file_a.getvalue())
-
             b_bytes = file_b.getvalue()
             title_map = load_summary_titles(b_bytes)
             total_rows_b = load_total_rows(b_bytes)
             selected_gzuban = select_drawing_numbers(title_map, filter_mode)
             labels_b = aggregate_filtered_rows(total_rows_b, selected_gzuban)
-        except ValueError as e:
-            st.error(f"読み込みエラー: {e}")
+            diff_df = compare_labels(labels_a, labels_b)
+            summary = summarize(diff_df, file_a.name, file_b.name, b_filter_mode=filter_mode)
+            st.session_state['two_workbook_diff'] = diff_df
+            st.session_state['two_workbook_summary'] = summary
+            st.session_state['two_workbook_output'] = create_compare_excel_output(diff_df, summary)
+        except ValueError as error:
+            st.error(f"読み込みエラー: {error}")
             return
 
-        diff_df = compare_labels(labels_a, labels_b)
-        summary = summarize(diff_df, file_a.name, file_b.name, b_filter_mode=filter_mode)
-        excel_bytes = create_compare_excel_output(diff_df, summary)
+    diff_df = st.session_state.get('two_workbook_diff')
+    if diff_df is None:
+        return
+    summary = st.session_state['two_workbook_summary']
+    st.divider()
+    st.subheader("結果")
+    st.info(
+        f"A のみ: {summary['A のみ']}件　/　B のみ: {summary['B のみ']}件　/　"
+        f"両方: {summary['両方']}件　/　ユニーク合計: {summary['ユニーク合計']}件"
+    )
+    st.dataframe(_for_display(diff_df).style.apply(_row_style, axis=1), width='stretch', hide_index=True)
+    st.download_button(
+        label="Excelをダウンロード", data=st.session_state['two_workbook_output'],
+        file_name="label_compare.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        type='primary', width='stretch', key='two_workbook_download',
+    )
 
-        st.session_state['diff_df'] = diff_df
-        st.session_state['summary'] = summary
-        st.session_state['excel_result'] = excel_bytes
-        st.session_state['download_done'] = False
-        st.rerun()
 
-    if 'diff_df' in st.session_state:
-        diff_df = st.session_state['diff_df']
-        summary = st.session_state['summary']
-
-        st.divider()
-        st.subheader("結果")
-        if 'B 絞り込み条件' in summary:
-            st.caption(f"B の対象範囲: {summary['B 絞り込み条件']}")
-        st.info(
-            f"A のみ: {summary['A のみ']}件　/　"
-            f"B のみ: {summary['B のみ']}件　/　"
-            f"両方: {summary['両方']}件　/　"
-            f"ユニーク合計: {summary['ユニーク合計']}件"
-        )
-
-        styled = _for_display(diff_df).style.apply(_row_style, axis=1)
-        st.dataframe(styled, width='stretch', hide_index=True)
-
-        download_done = st.session_state.get('download_done', False)
-        downloaded = st.download_button(
-            label="Excelをダウンロード",
-            data=st.session_state['excel_result'],
-            file_name="label_compare.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            type="primary",
-            width='stretch',
-        )
-        if downloaded and not download_done:
-            st.session_state['download_done'] = True
-            st.rerun()
+def main():
+    st.title("DXF Label Compare")
+    same_tab, two_tab = st.tabs(["同じExcel内で比較", "2つのExcelを比較"])
+    with same_tab:
+        _show_same_workbook_comparison()
+    with two_tab:
+        _show_two_workbook_comparison()
 
 
 if __name__ == '__main__':
