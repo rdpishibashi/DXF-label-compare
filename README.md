@@ -121,7 +121,7 @@ Excelファイル（既定ファイル名: `label_compare.xlsx`）:
 ```
 DXF-label-compare/
 ├── app.py                       # View層: Streamlit UI
-├── utils/
+├── model/
 │   ├── compare_labels.py        # Model層: 正規化・差分判定・サマリー集計（純関数）
 │   ├── excel_input.py           # Model層: Total/Summary シートの読み込み
 │   ├── drawing_filter.py        # Model層: Bの図番フィルタ（タイトル判定・絞り込み集計）

@@ -2,7 +2,7 @@ import io
 
 import pandas as pd
 
-from utils.same_workbook import compare_within_workbook, list_label_sheets
+from model.same_workbook import compare_within_workbook, list_label_sheets
 
 
 def _workbook_bytes():

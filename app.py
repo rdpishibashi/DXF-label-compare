@@ -1,17 +1,17 @@
 import streamlit as st
 import pandas as pd
 
-from utils.excel_input import load_total_labels, load_total_rows, load_summary_titles
-from utils.compare_labels import (
+from model.excel_input import load_total_labels, load_total_rows, load_summary_titles
+from model.compare_labels import (
     compare_labels, summarize, KUBUN_BOTH, KUBUN_A_ONLY, KUBUN_B_ONLY,
 )
-from utils.excel_output import create_compare_excel_output
-from utils.drawing_filter import (
+from model.excel_output import create_compare_excel_output
+from model.drawing_filter import (
     select_drawing_numbers, aggregate_filtered_rows,
     FILTER_UNIT_ONLY, FILTER_OPTIONS,
 )
-from utils.same_workbook import compare_within_workbook, list_label_sheets
-from utils.same_workbook_output import create_same_workbook_output
+from model.same_workbook import compare_within_workbook, list_label_sheets
+from model.same_workbook_output import create_same_workbook_output
 
 st.set_page_config(page_title="DXF Label Compare", page_icon="🔍", layout="wide")
 

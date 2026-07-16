@@ -5,7 +5,7 @@ import pandas as pd
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from utils.compare_labels import normalize_label, compare_labels, summarize
+from model.compare_labels import normalize_label, compare_labels, summarize
 
 
 def test_basic_kubun_assignment():

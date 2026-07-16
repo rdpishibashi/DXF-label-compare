@@ -3,7 +3,7 @@ import io
 
 import pandas as pd
 
-from utils.compare_labels import DIFF_COLUMNS, KUBUN_A_ONLY, KUBUN_B_ONLY, KUBUN_BOTH
+from model.compare_labels import DIFF_COLUMNS, KUBUN_A_ONLY, KUBUN_B_ONLY, KUBUN_BOTH
 
 _ROW_COLORS = {
     KUBUN_BOTH: {'bg_color': '#C6EFCE', 'font_color': '#006100'},
