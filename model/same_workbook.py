@@ -1,7 +1,6 @@
 """同一の抽出ラベルExcel内で、UNIT内結線図群と任意の1シートを比較する機能。"""
 from __future__ import annotations
 
-from dataclasses import dataclass
 import io
 from typing import Iterable
 
@@ -13,17 +12,7 @@ LABEL_COLUMN = "ラベル"
 COUNT_COLUMN = "個数"
 DRAWING_COLUMN = "図番"
 TITLE_COLUMN = "タイトル"
-SUBTITLE_COLUMN = "サブタイトル"
 UNIT_TITLE_TEXT = "UNIT内結線図"
-
-
-@dataclass(frozen=True)
-class Drawing:
-    """A側に選択された1図面。"""
-
-    drawing_no: str
-    title: str
-    subtitle: str
 
 
 def normalize_width(value: object) -> str:
@@ -85,20 +74,19 @@ def compare_within_workbook(file_bytes: bytes, b_sheet_name: str) -> dict:
         drawing_no = _text(row[DRAWING_COLUMN]).strip()
         title = _text(row[TITLE_COLUMN])
         if drawing_no and UNIT_TITLE_TEXT in normalize_width(title).upper():
-            subtitle = _text(row[SUBTITLE_COLUMN]) if SUBTITLE_COLUMN in summary_df.columns else ""
-            selected_drawings.append(Drawing(drawing_no, title, subtitle))
+            selected_drawings.append(drawing_no)
 
     if not selected_drawings:
         raise ValueError("タイトルに 'UNIT内結線図' を含む図番が Summary シートにありません")
 
     a_labels: dict[str, dict] = {}
     missing_sheets = []
-    for drawing in selected_drawings:
-        if drawing.drawing_no not in xls.sheet_names:
-            missing_sheets.append(drawing.drawing_no)
+    for drawing_no in selected_drawings:
+        if drawing_no not in xls.sheet_names:
+            missing_sheets.append(drawing_no)
             continue
-        df = xls.parse(drawing.drawing_no)
-        _require_columns(df, drawing.drawing_no, (LABEL_COLUMN, COUNT_COLUMN))
+        df = xls.parse(drawing_no)
+        _require_columns(df, drawing_no, (LABEL_COLUMN, COUNT_COLUMN))
         for label, count in zip(df[LABEL_COLUMN], df[COUNT_COLUMN]):
             if pd.isna(label):
                 continue
@@ -107,7 +95,7 @@ def compare_within_workbook(file_bytes: bytes, b_sheet_name: str) -> dict:
                 continue
             entry = a_labels.setdefault(label_text, {"count": 0, "drawings": set()})
             entry["count"] += int(count) if pd.notna(count) else 0
-            entry["drawings"].add(drawing.drawing_no)
+            entry["drawings"].add(drawing_no)
 
     if missing_sheets:
         raise ValueError(
@@ -128,7 +116,7 @@ def compare_within_workbook(file_bytes: bytes, b_sheet_name: str) -> dict:
     comparison_rows = []
     for label in labels:
         in_a, in_b = label in a_labels, label in b_labels
-        status = "共通" if in_a and in_b else "Aのみ" if in_a else "Bのみ"
+        status = "両方" if in_a and in_b else "A のみ" if in_a else "B のみ"
         a_entry = a_labels.get(label)
         comparison_rows.append({
             "ラベル": label,
@@ -139,32 +127,16 @@ def compare_within_workbook(file_bytes: bytes, b_sheet_name: str) -> dict:
             "比較結果": status,
         })
 
-    a_rows = [{
-        "ラベル": label,
-        "合計出現数": entry["count"],
-        "図番数": len(entry["drawings"]),
-        "図番": ", ".join(sorted(entry["drawings"])),
-    } for label, entry in sorted(a_labels.items())]
-    b_rows = [{"ラベル": label, "出現数": count} for label, count in sorted(b_labels.items())]
-    selected_rows = [{
-        "図番": drawing.drawing_no,
-        "タイトル": drawing.title,
-        "サブタイトル": drawing.subtitle,
-    } for drawing in sorted(selected_drawings, key=lambda drawing: drawing.drawing_no)]
-
     result_df = pd.DataFrame(comparison_rows)
     return {
         "b_sheet_name": b_sheet_name,
-        "selected_drawings": selected_rows,
-        "a_labels": a_rows,
-        "b_labels": b_rows,
         "comparison": result_df,
         "summary": {
-            "A 対象図番数": len(selected_rows),
-            "A ユニークラベル数": len(a_rows),
-            "B ユニークラベル数": len(b_rows),
-            "共通ラベル数": int((result_df["比較結果"] == "共通").sum()),
-            "A のみ": int((result_df["比較結果"] == "Aのみ").sum()),
-            "B のみ": int((result_df["比較結果"] == "Bのみ").sum()),
+            "A 対象図番数": len(selected_drawings),
+            "A ユニークラベル数": len(a_labels),
+            "B ユニークラベル数": len(b_labels),
+            "両方": int((result_df["比較結果"] == "両方").sum()),
+            "A のみ": int((result_df["比較結果"] == "A のみ").sum()),
+            "B のみ": int((result_df["比較結果"] == "B のみ").sum()),
         },
     }

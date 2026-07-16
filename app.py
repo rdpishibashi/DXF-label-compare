@@ -72,7 +72,7 @@ def _show_same_workbook_comparison():
     summary = result['summary']
     st.info(
         f"A 対象図番: {summary['A 対象図番数']}件　/　"
-        f"共通: {summary['共通ラベル数']}件　/　"
+        f"両方: {summary['両方']}件　/　"
         f"A のみ: {summary['A のみ']}件　/　B のみ: {summary['B のみ']}件"
     )
     st.dataframe(result['comparison'], width='stretch', hide_index=True)
@@ -151,7 +151,7 @@ def main():
                            U+3040-30FF,
                            U+FF00-FFEF,
                            U+4E00-9FFF, U+3400-4DBF;
-            size-adjust: 94%;
+            size-adjust: 90%;
         }
         @font-face {
             font-family: "AppMixedFont";

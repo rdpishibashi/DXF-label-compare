@@ -36,13 +36,9 @@ def test_compare_within_workbook_filters_unit_titles_and_aggregates_labels():
         "A 対象図番数": 2,
         "A ユニークラベル数": 3,
         "B ユニークラベル数": 2,
-        "共通ラベル数": 1,
+        "両方": 1,
         "A のみ": 2,
         "B のみ": 1,
     }
-    assert result["a_labels"] == [
-        {"ラベル": "A", "合計出現数": 5, "図番数": 2, "図番": "EE001, EE002"},
-        {"ラベル": "B", "合計出現数": 1, "図番数": 1, "図番": "EE002"},
-        {"ラベル": "C", "合計出現数": 1, "図番数": 1, "図番": "EE001"},
-    ]
-    assert list(result["comparison"]["比較結果"]) == ["共通", "Aのみ", "Aのみ", "Bのみ"]
+    assert list(result["comparison"]["ラベル"]) == ["A", "B", "C", "D"]
+    assert list(result["comparison"]["比較結果"]) == ["両方", "A のみ", "A のみ", "B のみ"]
