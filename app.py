@@ -141,6 +141,28 @@ def _show_two_workbook_comparison():
 
 
 def main():
+    st.markdown("""
+        <style>
+        @font-face {
+            font-family: "AppMixedFont";
+            src: local("Hiragino Kaku Gothic ProN"), local("Yu Gothic UI"),
+                 local("Yu Gothic"), local("Meiryo");
+            unicode-range: U+3000-303F,
+                           U+3040-30FF,
+                           U+FF00-FFEF,
+                           U+4E00-9FFF, U+3400-4DBF;
+            size-adjust: 94%;
+        }
+        @font-face {
+            font-family: "AppMixedFont";
+            src: local("Source Sans Pro"), local("Helvetica Neue"), local("Arial");
+        }
+        .stApp, .stApp p, .stApp li, .stApp label, .stApp td, .stApp th,
+        .stApp h1, .stApp h2, .stApp h3, .stApp input, .stApp button {
+            font-family: "AppMixedFont", sans-serif !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
     st.title("DXF Label Compare - 機器符号比較")
     st.markdown("""
         <style>
