@@ -161,6 +161,10 @@ def normalize_label(s: str) -> str:
 
 `DXF-extract-labels` に倣い、モデル層（比較ロジック）を Streamlit 非依存の純関数で切り出す。
 
+> 以下は初回実装（§1〜§11）時点の構成。その後 §12・§13 の追加機能で
+> `utils/drawing_filter.py`・`utils/same_workbook.py`・`utils/same_workbook_output.py`
+> と対応するテストが増えている。現在の実際の構成は `ls utils/ tests/unit/` で確認すること。
+
 ```
 DXF-label-compare/
 ├── app.py                    # View層: Streamlit UI（薄く保つ）
@@ -176,8 +180,8 @@ DXF-label-compare/
 ├── tests/
 │   └── unit/
 │       └── test_compare_labels.py
-├── docs/
-│   └── IMPLEMENTATION_SPEC.md # 本ファイル（実装後、内容は README/docs に反映してよい）
+├── TECHNICAL.md               # 本ファイル（旧 docs/IMPLEMENTATION_SPEC.md、2026-07-16 に
+│                               # 他プロジェクトと同じ命名規則でプロジェクトルートへリネーム）
 └── README.md                 # 日本語ドキュメント
 ```
 
@@ -398,8 +402,8 @@ st.dataframe(styled, width='stretch', hide_index=True)
 3. **Phase 3-2（必須ゲート・main マージ前）**: `README.md` を日本語で作成し、
    `docs/` を整備。`ls *.md docs/*.md` で対象を列挙し、各ファイルを更新してから 3-3 へ。
    - `README.md`: 目的・使い方・入出力・Total シート前提・正規化ルール・配色を記載。
-   - この `IMPLEMENTATION_SPEC.md` は実装後 `docs/OVERVIEW.md` 等へ発展させるか、
-     README に要点を吸収したうえで残置してよい。
+   - この実装仕様書は実装後 `TECHNICAL.md`（プロジェクトルート、Tools 配下の他プロジェクトと
+     同じ命名規則）へ発展させるか、README に要点を吸収したうえで残置してよい。
 4. **Phase 3-3**: `main` へ `--no-ff` マージ。
 5. **Phase 3-5**: push はユーザー確認後（リモート未設定ならセットアップをユーザーに案内）。
 
@@ -491,7 +495,39 @@ st.dataframe(styled, width='stretch', hide_index=True)
   は新「A のみ=2714」に、それぞれ対応する。両方=819・合計=5380は入れ替えの
   影響を受けないため両セッションで同一。
 
+## 13. タブ名変更・streamlit スキル準拠スタイル適用（2026-07-16）
+
+ユーザーから以下の要望を受けて `app.py`（View層のみ）を変更した。Model層（`utils/`）は無変更。
+
+1. **タブ名変更・表示順変更**: 「同じExcel内で比較」→「結線図-組立図比較」、
+   「2つのExcelを比較」→「展開図-結線図比較」にリネームし、表示順を
+   展開図-結線図比較 → 結線図-組立図比較 に変更（旧: 結線図-組立図比較が先頭だった）。
+   各タブ内の説明文・アップローダーラベル（A: 展開接続図のラベル・ファイル / B: UNIT内
+   結線図セットのラベル・ファイル）・実行ボタン文言もタブ名に統一。
+   内部識別子（`session_state` キー・関数名・ダウンロードファイル名・列名 `A個数`/`B個数`
+   等）は変更していない。
+2. **タイトル変更**: `st.title("DXF Label Compare")` →
+   `st.title("DXF Label Compare - 機器符号比較")`。`st.set_page_config` の
+   `page_title`（ブラウザタブ名）は変更対象外だったため `"DXF Label Compare"` のまま。
+3. **streamlit スキル §12 準拠スタイルの適用**:
+   - 箱型タブ CSS（`.stTabs` の `data-baseweb="tab"` セレクタでボーダー・角丸・
+     選択状態の背景を制御）を `main()` 冒頭で `st.markdown(..., unsafe_allow_html=True)`
+     により注入。
+   - 日英混在フォントサイズ調整（`@font-face` + `unicode-range` + `size-adjust: 94%`
+     による日本語グリフのみの縮小、フォント名 `AppMixedFont`）も同様に注入。
+     初回実装時は未適用だったため、レビュー指摘を受けて追加した。
+   - どちらもテーマ色ではなく無彩色 `rgba()` ベースのため、ライト/ダークテーマ双方で
+     利用可能（streamlit スキルの指針どおり）。
+
+ファイル名変更（ドキュメントのみ、コード非関連）:
+
+- `docs/IMPLEMENTATION_SPEC.md` → `TECHNICAL.md`（プロジェクトルート）にリネーム。
+  `Tools/` 配下の他プロジェクト（`DXF-extract-labels`・`DXF-diff-manager` 等）が
+  技術文書をプロジェクトルート直下の `TECHNICAL.md` に置く命名規則と揃えるため。
+  `docs/` フォルダは中身が無くなったため実質消滅（git は空ディレクトリを追跡しない）。
+
 ---
 
 *作成: 2026-07-12 / Phase 1 担当（Opus）→ Phase 2 以降担当（sonnet）への引き継ぎ*
 *実装完了: 2026-07-12 / Phase 2〜Phase 3-2 まで sonnet が実施*
+*2026-07-16: タブ名変更・streamlit スキル準拠スタイル適用・`TECHNICAL.md` へのリネーム*

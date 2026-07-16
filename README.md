@@ -1,12 +1,20 @@
-# DXF Label Compare
+# DXF Label Compare - 機器符号比較
 
-`DXF-extract-labels` が出力したExcelのラベル差分を比較し、Excel形式で出力する
-Streamlitアプリです。
+`DXF-extract-labels` が出力したExcelのラベル（機器符号）差分を比較し、Excel形式で出力する
+Streamlitアプリです。画面は2つのタブ（展開図-結線図比較／結線図-組立図比較）で構成されます。
 
-## 同じExcel内で比較（新機能）
+## 展開図-結線図比較
 
-1つの抽出ラベルExcelをアップロードし、Bにする個別図面シートを選ぶだけで、今回の比較を
-繰り返し実行できます。
+展開接続図ファイルから抽出したラベル・ファイル(A)とUNIT内結線図ファイルセットから抽出した
+ラベル・ファイル(B)のラベル（機器符号）を比較します。`DXF-extract-labels` が出力した2つの
+Excelファイルの `Total` シートに含まれるラベルを比較し、差分（A のみ／B のみ／両方）を
+Excel形式で出力します。
+
+## 結線図-組立図比較
+
+UNIT内結線図ファイルセットから抽出したラベル・ファイルを利用して、UNIT内結線図に含まれる
+ラベルと組立図に含まれるラベルを比較します。1つの抽出ラベルExcelをアップロードし、Bにする
+個別図面シート（組立図等）を選ぶだけで、今回の比較を繰り返し実行できます。
 
 - **A**: `Summary` シートの `タイトル` に `UNIT内結線図` を含む図番の個別シートを全て統合
   します。タイトルの `ＵＮＩＴ` と `UNIT` は同じものとして扱います。
@@ -14,11 +22,6 @@ Streamlitアプリです。
 - **出力**: 比較結果に加え、Aの統合ラベル一覧、Bのラベル一覧、Aの対象図番一覧を含む
   Excelをダウンロードできます。
 - **ラベル表記**: ラベルそのものは正規化せず、元の表記のまま重複除外・比較します。
-
-## 2つのExcelを比較（従来機能）
-
-`DXF-extract-labels` が出力した2つのExcelファイル（A: 展開接続図／B: UNIT内結線図）の
-`Total` シートに含まれるラベルを比較し、差分（A のみ／B のみ／両方）をExcel形式で出力します。
 
 ## 機能
 
@@ -117,14 +120,17 @@ Excelファイル（既定ファイル名: `label_compare.xlsx`）:
 
 ```
 DXF-label-compare/
-├── app.py                    # View層: Streamlit UI
+├── app.py                       # View層: Streamlit UI
 ├── utils/
-│   ├── compare_labels.py     # Model層: 正規化・差分判定・サマリー集計（純関数）
-│   ├── excel_input.py        # Model層: Total/Summary シートの読み込み
-│   ├── drawing_filter.py     # Model層: Bの図番フィルタ（タイトル判定・絞り込み集計）
-│   └── excel_output.py       # Model層: 差分Excelの生成
-├── tests/unit/                # 単体テスト（Model層）
-├── .streamlit/config.toml     # UIテーマ設定
+│   ├── compare_labels.py        # Model層: 正規化・差分判定・サマリー集計（純関数）
+│   ├── excel_input.py           # Model層: Total/Summary シートの読み込み
+│   ├── drawing_filter.py        # Model層: Bの図番フィルタ（タイトル判定・絞り込み集計）
+│   ├── excel_output.py          # Model層: 展開図-結線図比較の差分Excelの生成
+│   ├── same_workbook.py         # Model層: 結線図-組立図比較（同一Excel内比較）のロジック
+│   └── same_workbook_output.py  # Model層: 結線図-組立図比較の結果Excelの生成
+├── tests/unit/                   # 単体テスト（Model層）
+├── .streamlit/config.toml        # UIテーマ設定
+├── TECHNICAL.md                  # 技術仕様書
 └── requirements.txt
 ```
 
