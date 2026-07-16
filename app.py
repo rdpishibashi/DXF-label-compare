@@ -34,10 +34,10 @@ def _for_display(diff_df):
 
 
 def _show_same_workbook_comparison():
-    st.subheader("同じExcel内で比較")
+    st.subheader("結線図-組立図比較")
     st.caption(
-        "DXF-extract-labels が出力した1つのExcelを指定し、Bにする個別図面シートを選びます。"
-        " Aは Summary のタイトルに「UNIT内結線図」を含む全図番から自動作成します。"
+        "UNIT内結線図ファイルセットから抽出したラベル・ファイルを利用して、"
+        "UNIT内結線図に含まれれるラベルと組立図に含まれるラベルを比較します。"
     )
     uploaded = st.file_uploader("抽出ラベルExcel", type=['xlsx'], key='same_workbook_file')
     if uploaded is None:
@@ -54,7 +54,7 @@ def _show_same_workbook_comparison():
         return
 
     b_sheet_name = st.selectbox("B：比較するシート", label_sheets, key='same_workbook_b_sheet')
-    if st.button("同じExcel内で比較", type='primary', key='same_workbook_run'):
+    if st.button("結線図-組立図比較", type='primary', key='same_workbook_run'):
         try:
             result = compare_within_workbook(workbook_bytes, b_sheet_name)
             st.session_state['same_workbook_result'] = result
@@ -88,19 +88,22 @@ def _show_same_workbook_comparison():
 
 
 def _show_two_workbook_comparison():
-    st.subheader("2つのExcelを比較")
-    st.caption("従来機能：Aの Total シートと、Bの UNIT内結線図群の Total ラベルを比較します。")
+    st.subheader("展開図-結線図比較")
+    st.caption(
+        "展開接続図ファイルから抽出したラベル・ファイル(A)とUNIT内結線図ファイルセットから"
+        "抽出したラベル・ファイル(B)のラベル（機器符号）を比較します。"
+    )
     col_a, col_b = st.columns(2)
     with col_a:
-        file_a = st.file_uploader("A: 展開接続図", type=['xlsx'], key='uploader_a')
+        file_a = st.file_uploader("A: 展開接続図のラベル・ファイル", type=['xlsx'], key='uploader_a')
     with col_b:
-        file_b = st.file_uploader("B: UNIT内結線図", type=['xlsx'], key='uploader_b')
+        file_b = st.file_uploader("B: UNIT内結線図セットのラベル・ファイル", type=['xlsx'], key='uploader_b')
         filter_mode = FILTER_UNIT_ONLY
         if file_b is not None:
             filter_mode = st.radio("対象範囲（Bのタイトルで絞り込み）", FILTER_OPTIONS, index=0,
                                    key='b_filter_mode', horizontal=True)
 
-    if st.button("2つのExcelを比較", type='primary', disabled=file_a is None or file_b is None,
+    if st.button("展開図-結線図比較", type='primary', disabled=file_a is None or file_b is None,
                  key='two_workbook_run'):
         try:
             labels_a = load_total_labels(file_a.getvalue())
@@ -138,12 +141,36 @@ def _show_two_workbook_comparison():
 
 
 def main():
-    st.title("DXF Label Compare")
-    same_tab, two_tab = st.tabs(["同じExcel内で比較", "2つのExcelを比較"])
-    with same_tab:
-        _show_same_workbook_comparison()
+    st.title("DXF Label Compare - 機器符号比較")
+    st.markdown("""
+        <style>
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 6px;
+            align-items: flex-end;
+        }
+        .stTabs button[data-baseweb="tab"] {
+            border: 1px solid rgba(128, 128, 128, 0.5);
+            border-bottom: none;
+            border-radius: 10px 10px 0 0;
+            padding: 4px 20px;
+            background: rgba(128, 128, 128, 0.12);
+        }
+        .stTabs button[data-baseweb="tab"][aria-selected="true"] {
+            background: transparent;
+        }
+        .stTabs button[data-baseweb="tab"] [data-testid="stMarkdownContainer"] p {
+            font-size: 16.7px;
+        }
+        .stTabs button[data-baseweb="tab"][aria-selected="true"] [data-testid="stMarkdownContainer"] p {
+            font-weight: 700;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    two_tab, same_tab = st.tabs(["展開図-結線図比較", "結線図-組立図比較"])
     with two_tab:
         _show_two_workbook_comparison()
+    with same_tab:
+        _show_same_workbook_comparison()
 
 
 if __name__ == '__main__':
