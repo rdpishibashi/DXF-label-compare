@@ -72,7 +72,7 @@ def _show_same_workbook_comparison():
     summary = result['summary']
     st.info(
         f"A 対象図番: {summary['A 対象図番数']}件　/　"
-        f"共通: {summary['共通ラベル数']}件　/　"
+        f"両方: {summary['両方']}件　/　"
         f"A のみ: {summary['A のみ']}件　/　B のみ: {summary['B のみ']}件"
     )
     st.dataframe(result['comparison'], width='stretch', hide_index=True)
