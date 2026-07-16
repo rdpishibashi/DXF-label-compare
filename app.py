@@ -151,7 +151,7 @@ def main():
                            U+3040-30FF,
                            U+FF00-FFEF,
                            U+4E00-9FFF, U+3400-4DBF;
-            size-adjust: 94%;
+            size-adjust: 90%;
         }
         @font-face {
             font-family: "AppMixedFont";
