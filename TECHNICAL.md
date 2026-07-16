@@ -17,7 +17,7 @@
    §4 Excel 出力, §6 セッション状態, §11 テーマ/ボタン, §12 動作確認, §13 落とし穴**）
 3. `../CLAUDE.md`（Tools 共通ガイド。Excel 出力パターン・色分け規約）
 4. 参照実装プロジェクト: `../DXF-extract-labels/`
-   - `.streamlit/config.toml`, `.gitignore`, `requirements.txt`, `utils/` 構成、
+   - `.streamlit/config.toml`, `.gitignore`, `requirements.txt`, `model/` 構成、
      `app.py` のボタン/セッション/ダウンロードの書き方を**踏襲**する
 
 ---
@@ -162,8 +162,8 @@ def normalize_label(s: str) -> str:
 `DXF-extract-labels` に倣い、モデル層（比較ロジック）を Streamlit 非依存の純関数で切り出す。
 
 > 以下は初回実装（§1〜§11）時点の構成。その後 §12・§13 の追加機能で
-> `utils/drawing_filter.py`・`utils/same_workbook.py`・`utils/same_workbook_output.py`
-> と対応するテストが増えている。現在の実際の構成は `ls utils/ tests/unit/` で確認すること。
+> `model/drawing_filter.py`・`model/same_workbook.py`・`model/same_workbook_output.py`
+> と対応するテストが増えている。現在の実際の構成は `ls model/ tests/unit/` で確認すること。
 
 ```
 DXF-label-compare/
@@ -172,7 +172,7 @@ DXF-label-compare/
 ├── .gitignore                # ../DXF-extract-labels/.gitignore をコピー
 ├── .streamlit/
 │   └── config.toml           # ../DXF-extract-labels/.streamlit/config.toml と同一
-├── utils/
+├── model/
 │   ├── __init__.py           # 空ファイル
 │   ├── excel_input.py        # Model層: Total シート読み込み → 正規化 dict
 │   ├── compare_labels.py     # Model層: 正規化・差分・サマリー（純関数・テスト対象）
@@ -205,7 +205,7 @@ cp ../DXF-extract-labels/.gitignore .gitignore
 
 ## 6. 各モジュールの責務と関数シグネチャ（参考実装つき）
 
-### 6-1. `utils/compare_labels.py`（純関数・単体テストの主対象）
+### 6-1. `model/compare_labels.py`（純関数・単体テストの主対象）
 
 ```python
 import pandas as pd
@@ -250,12 +250,12 @@ def summarize(df: pd.DataFrame, a_name: str, b_name: str) -> dict:
     }
 ```
 
-### 6-2. `utils/excel_input.py`
+### 6-2. `model/excel_input.py`
 
 ```python
 import io
 import pandas as pd
-from utils.compare_labels import normalize_label
+from model.compare_labels import normalize_label
 
 REQUIRED_SHEET = 'Total'
 
@@ -279,7 +279,7 @@ def load_total_labels(file_bytes: bytes) -> dict[str, int]:
 > `st.cache_data` を使う場合は `file_bytes: bytes` を引数にする（streamlit スキル §5。
 > アンダースコア引数は使わない）。
 
-### 6-3. `utils/excel_output.py`
+### 6-3. `model/excel_output.py`
 
 - `xlsxwriter` エンジンで `サマリー`→`差分` の順に書く。
 - 区分ごとの `workbook.add_format({'bg_color': ..., 'font_color': ...})` を 3 つ用意し、
@@ -407,7 +407,7 @@ st.dataframe(styled, width='stretch', hide_index=True)
 4. **Phase 3-3**: `main` へ `--no-ff` マージ。
 5. **Phase 3-5**: push はユーザー確認後（リモート未設定ならセットアップをユーザーに案内）。
 
-> 参照元 `../CLAUDE.md` の「共有 `utils/extract_labels.py`」の伝播ルールは
+> 参照元 `../CLAUDE.md` の「共有 `model/extract_labels.py`」の伝播ルールは
 > **本アプリには無関係**（extract_labels を使わない）。新規の独立コードなので
 > 他プロジェクトへの伝播は不要。
 
@@ -416,9 +416,9 @@ st.dataframe(styled, width='stretch', hide_index=True)
 ## 10. 完成チェックリスト
 
 - [x] `.streamlit/config.toml` / `.gitignore` をコピー、`requirements.txt` 作成
-- [x] `utils/compare_labels.py`（normalize_label / compare_labels / summarize）
-- [x] `utils/excel_input.py`（load_total_labels、Total 欠如で ValueError）
-- [x] `utils/excel_output.py`（サマリー＋差分、区分別 3 色、空欄セル、freeze/filter）
+- [x] `model/compare_labels.py`（normalize_label / compare_labels / summarize）
+- [x] `model/excel_input.py`（load_total_labels、Total 欠如で ValueError）
+- [x] `model/excel_output.py`（サマリー＋差分、区分別 3 色、空欄セル、freeze/filter）
 - [x] `app.py`（2 uploader・比較ボタン primary+disabled・Styler 色分け表示・DL primary）
 - [x] 単体テスト（§7-1 の 1〜5）が pass
 - [x] 実データで A のみ1847 / B のみ2714 / 両方819 / 合計5380 を再現
@@ -452,13 +452,13 @@ st.dataframe(styled, width='stretch', hide_index=True)
 
 追加した/変更したモジュール:
 
-- `utils/drawing_filter.py`（新規）: `select_drawing_numbers()`（タイトル→対象図番集合）、
+- `model/drawing_filter.py`（新規）: `select_drawing_numbers()`（タイトル→対象図番集合）、
   `aggregate_filtered_rows()`（図番リストでの絞り込み集計）。純関数、単体テスト
   `tests/unit/test_drawing_filter.py` あり。
-- `utils/excel_input.py`（拡張）: `load_total_rows()`（Total シートを図番付きで
+- `model/excel_input.py`（拡張）: `load_total_rows()`（Total シートを図番付きで
   行単位に返す）、`load_summary_titles()`（Summary シートから 図番→タイトル の dict）
   を追加。既存の `load_total_labels()`（A側で使用、図番なし集約）は変更なし。
-- `utils/compare_labels.py`: `summarize()` に任意引数 `b_filter_mode` を追加
+- `model/compare_labels.py`: `summarize()` に任意引数 `b_filter_mode` を追加
   （指定時のみ `B ファイル名` の直後に `B 絞り込み条件` を挿入。デフォルト `None` で
   後方互換）。
 - `app.py`: B側アップローダーの下に `st.radio` で絞り込み選択肢を表示（既定値
@@ -497,7 +497,7 @@ st.dataframe(styled, width='stretch', hide_index=True)
 
 ## 13. タブ名変更・streamlit スキル準拠スタイル適用（2026-07-16）
 
-ユーザーから以下の要望を受けて `app.py`（View層のみ）を変更した。Model層（`utils/`）は無変更。
+ユーザーから以下の要望を受けて `app.py`（View層のみ）を変更した。Model層（`model/`）は無変更。
 
 1. **タブ名変更・表示順変更**: 「同じExcel内で比較」→「結線図-組立図比較」、
    「2つのExcelを比較」→「展開図-結線図比較」にリネームし、表示順を
@@ -509,7 +509,7 @@ st.dataframe(styled, width='stretch', hide_index=True)
 2. **タイトル変更**: `st.title("DXF Label Compare")` →
    `st.title("DXF Label Compare - 機器符号比較")`。`st.set_page_config` の
    `page_title`（ブラウザタブ名）は変更対象外だったため `"DXF Label Compare"` のまま。
-3. **streamlit スキル §12 準拠スタイルの適用**:
+3. **streamlit スキル §11 準拠スタイルの適用**:
    - 箱型タブ CSS（`.stTabs` の `data-baseweb="tab"` セレクタでボーダー・角丸・
      選択状態の背景を制御）を `main()` 冒頭で `st.markdown(..., unsafe_allow_html=True)`
      により注入。
@@ -517,7 +517,9 @@ st.dataframe(styled, width='stretch', hide_index=True)
      による日本語グリフのみの縮小、フォント名 `AppMixedFont`）も同様に注入。
      初回実装時は未適用だったため、レビュー指摘を受けて追加した。
    - どちらもテーマ色ではなく無彩色 `rgba()` ベースのため、ライト/ダークテーマ双方で
-     利用可能（streamlit スキルの指針どおり）。
+     利用可能（streamlit スキルの指針どおり）。旧§12「見た目・タイポグラフィのCSS
+     カスタマイズ集」は、この指摘を受けて streamlit スキル側で §11 に統合され、
+     新規プロジェクトへのデフォルト適用対象へ格上げされた（詳細は §14 参照）。
 
 ファイル名変更（ドキュメントのみ、コード非関連）:
 
@@ -526,8 +528,36 @@ st.dataframe(styled, width='stretch', hide_index=True)
   技術文書をプロジェクトルート直下の `TECHNICAL.md` に置く命名規則と揃えるため。
   `docs/` フォルダは中身が無くなったため実質消滅（git は空ディレクトリを追跡しない）。
 
+## 14. `utils/` → `model/` リネーム、および関連スキルの是正（2026-07-16）
+
+§13 の作業後、ユーザーから「日英混合フォント対応と `model/` フォルダ名が毎回抜けがちなのは
+なぜか」という指摘を受けて調査した結果、2つの独立した原因が判明した。
+
+1. **日英混合フォント（streamlit スキル旧§12）**: スキル側が「§11は新規プロジェクトの
+   既定スタイル」「§12は必要なプロジェクトだけ個別に適用する」と明記して区別しており、
+   §12 は明示的な指示がない限り適用対象外という opt-in 表現になっていた。→ streamlit
+   スキルの §12 を §11 に統合し、新規プロジェクトへの一律デフォルト適用に変更した
+   （`~/.claude/skills/streamlit/SKILL.md`）。
+2. **`model/` フォルダ名**: `Tools/CLAUDE.md` の記述は DXF-extract-labels・
+   DXF-diff-manager の2プロジェクトが `utils/`→`model/` にリネームした**過去の事実**の
+   記録に過ぎず、「今後の新規プロジェクトは `model/` にすべき」という指示にはなって
+   いなかった。実際に新規プロジェクト作成時に参照する `dxf-new-project-scaffolding`
+   スキル（`Tools/.claude/skills/dxf-new-project-scaffolding/SKILL.md`）は、
+   今も `utils/__init__.py`・`utils/extract_labels.py` という旧命名のままだった。
+   → scaffolding スキルを `model/` 命名に更新し、DXF-label-compare 自体も
+   `utils/` → `model/` にリネームした（`git mv utils model`、`app.py`・`model/*.py`・
+   `tests/unit/*.py` 内の `from utils.` → `from model.` を一括置換、`README.md`・
+   `TECHNICAL.md` 内のパス表記も追随）。単体テスト17件 pass、実アプリ起動確認済み。
+
+この節の教訓: 「複数プロジェクトが同じ変更をした」という**事実の記録**と、「今後の
+新規プロジェクトはこうすべき」という**指示**は別物であり、前者を CLAUDE.md に書いただけ
+では後者として機能しない。新しい規約を定着させるには、実際に参照される手順書
+（ここでは scaffolding スキル・streamlit スキル）側を直接更新する必要がある。
+
 ---
 
 *作成: 2026-07-12 / Phase 1 担当（Opus）→ Phase 2 以降担当（sonnet）への引き継ぎ*
 *実装完了: 2026-07-12 / Phase 2〜Phase 3-2 まで sonnet が実施*
 *2026-07-16: タブ名変更・streamlit スキル準拠スタイル適用・`TECHNICAL.md` へのリネーム*
+*2026-07-16: `utils/` → `model/` リネーム、streamlitスキル §12→§11統合、
+dxf-new-project-scaffolding スキルの `model/` 命名反映*

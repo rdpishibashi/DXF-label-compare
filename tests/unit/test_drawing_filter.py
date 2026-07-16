@@ -3,7 +3,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from utils.drawing_filter import (
+from model.drawing_filter import (
     select_drawing_numbers, aggregate_filtered_rows,
     FILTER_UNIT_ONLY, FILTER_UNIT_EXCLUDED, FILTER_ALL,
 )

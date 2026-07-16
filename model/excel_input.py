@@ -3,7 +3,7 @@ import io
 
 import pandas as pd
 
-from utils.compare_labels import normalize_label
+from model.compare_labels import normalize_label
 
 REQUIRED_TOTAL_SHEET = 'Total'
 REQUIRED_TOTAL_COLUMNS = ('ラベル', '個数')
@@ -44,7 +44,7 @@ def load_total_rows(file_bytes: bytes) -> list:
     """Excel の Total シートを (正規化ラベル, 個数, 図番リスト) のタプルのリストで返す。
 
     図番 は Total シートの『図番』列（カンマ区切り）を分割・正規化したもの。
-    `utils.drawing_filter` の図番フィルタと組み合わせて使う（現状は B 側の
+    `model.drawing_filter` の図番フィルタと組み合わせて使う（現状は B 側の
     UNIT内結線図フィルタ機能専用）。Total シートが無い、または
     『ラベル』『個数』『図番』列が無い場合は ValueError。
     """

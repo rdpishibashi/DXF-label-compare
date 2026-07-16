@@ -1,5 +1,5 @@
 """B側（UNIT内結線図）の図番フィルタリング（Streamlit非依存の純関数）。"""
-from utils.compare_labels import normalize_label
+from model.compare_labels import normalize_label
 
 UNIT_TITLE = 'UNIT内結線図'
 
