@@ -7,7 +7,7 @@ from model.excel_input import (
 )
 from model.compare_labels import (
     compare_labels, summarize, compare_labels_by_region, build_region_summary_rows,
-    KUBUN_BOTH, KUBUN_A_ONLY, KUBUN_B_ONLY,
+    blank_repeated_column, KUBUN_BOTH, KUBUN_A_ONLY, KUBUN_B_ONLY,
 )
 from model.excel_output import create_compare_excel_output, create_region_compare_excel_output
 from model.drawing_filter import (
@@ -30,10 +30,12 @@ def _row_style(row):
 
 
 def _for_display(diff_df):
-    """画面表示用に欠損の個数を空欄にする。"""
+    """画面表示用に欠損の個数を空欄にし、『領域名』列があれば連続する重複を空欄にする。"""
     disp = diff_df.copy()
     for col in ('A個数', 'B個数'):
         disp[col] = disp[col].apply(lambda value: '' if pd.isna(value) else str(int(value)))
+    if '領域名' in disp.columns:
+        disp = blank_repeated_column(disp, '領域名')
     return disp
 
 
@@ -86,7 +88,6 @@ def _show_same_workbook_comparison():
         file_name=f"label_comparison_UNIT内結線図_vs_{result['b_sheet_name']}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         type='primary',
-        width='stretch',
         key='same_workbook_download',
     )
 
@@ -168,6 +169,7 @@ def _show_two_workbook_comparison():
                     metrics_by_region, file_a.name, file_b.name, b_filter_mode=filter_mode)
                 st.session_state['two_workbook_output'] = create_region_compare_excel_output(
                     diff_df, summary)
+                st.session_state['two_workbook_region_metrics'] = metrics_by_region
             else:
                 labels_a = load_total_labels(file_a.getvalue())
                 b_bytes = file_b.getvalue()
@@ -194,28 +196,28 @@ def _show_two_workbook_comparison():
     st.divider()
     st.subheader("結果")
     if is_region_mode:
-        metrics_rows = [row for row in summary if row['領域名']]
-        region_count = len(dict.fromkeys(row['領域名'] for row in metrics_rows))
+        metrics_by_region = st.session_state.get('two_workbook_region_metrics', {})
         totals = {}
-        for row in metrics_rows:
-            totals[row['項目']] = totals.get(row['項目'], 0) + row['値']
+        for metrics in metrics_by_region.values():
+            for key, value in metrics.items():
+                totals[key] = totals.get(key, 0) + value
         st.info(
-            f"対象領域: {region_count}件　/　"
+            f"対象領域: {len(metrics_by_region)}件　/　"
             f"A のみ: {totals.get('A のみ', 0)}件　/　B のみ: {totals.get('B のみ', 0)}件　/　"
-            f"両方: {totals.get('両方', 0)}件　/　ユニーク合計: {totals.get('ユニーク合計', 0)}件"
+            f"両方: {totals.get('両方', 0)}件"
         )
         st.dataframe(pd.DataFrame(summary), width='stretch', hide_index=True)
     else:
         st.info(
             f"A のみ: {summary['A のみ']}件　/　B のみ: {summary['B のみ']}件　/　"
-            f"両方: {summary['両方']}件　/　ユニーク合計: {summary['ユニーク合計']}件"
+            f"両方: {summary['両方']}件"
         )
     st.dataframe(_for_display(diff_df).style.apply(_row_style, axis=1), width='stretch', hide_index=True)
     st.download_button(
         label="Excelをダウンロード", data=st.session_state['two_workbook_output'],
         file_name="label_compare.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        type='primary', width='stretch', key='two_workbook_download',
+        type='primary', key='two_workbook_download',
     )
 
 

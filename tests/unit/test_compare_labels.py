@@ -81,8 +81,7 @@ def test_summarize_counts_are_consistent():
     assert summary['両方'] == 2
     assert summary['A ユニークラベル数'] == 3
     assert summary['B ユニークラベル数'] == 3
-    assert summary['ユニーク合計'] == 4
-    assert summary['ユニーク合計'] == len(df)
+    assert 'ユニーク合計' not in summary
     assert 'B 絞り込み条件' not in summary
 
 
@@ -104,8 +103,9 @@ def test_summarize_metrics_matches_summarize_subset():
     df = compare_labels(a, b)
     metrics = summarize_metrics(df)
     full = summarize(df, 'A.xlsx', 'B.xlsx')
-    for key in ('A ユニークラベル数', 'B ユニークラベル数', 'A のみ', 'B のみ', '両方', 'ユニーク合計'):
+    for key in ('A ユニークラベル数', 'B ユニークラベル数', 'A のみ', 'B のみ', '両方'):
         assert metrics[key] == full[key]
+    assert 'ユニーク合計' not in metrics
 
 
 def test_compare_labels_by_region_single_region():
@@ -118,7 +118,7 @@ def test_compare_labels_by_region_single_region():
     assert sorted(diff_df['ラベル']) == ['CN1', 'R10', 'X1']
     assert metrics == {'R1': {
         'A ユニークラベル数': 2, 'B ユニークラベル数': 2,
-        'A のみ': 1, 'B のみ': 1, '両方': 1, 'ユニーク合計': 3,
+        'A のみ': 1, 'B のみ': 1, '両方': 1,
     }}
 
 
@@ -159,24 +159,30 @@ def test_compare_labels_by_region_empty_regions_list():
 
 def test_build_region_summary_rows_layout():
     metrics_by_region = {
-        'R1': {'A ユニークラベル数': 2, 'B ユニークラベル数': 2, 'A のみ': 1, 'B のみ': 1, '両方': 1, 'ユニーク合計': 3},
-        'R2': {'A ユニークラベル数': 5, 'B ユニークラベル数': 0, 'A のみ': 5, 'B のみ': 0, '両方': 0, 'ユニーク合計': 5},
+        'R1': {'A ユニークラベル数': 2, 'B ユニークラベル数': 2, 'A のみ': 1, 'B のみ': 1, '両方': 1},
+        'R2': {'A ユニークラベル数': 5, 'B ユニークラベル数': 0, 'A のみ': 5, 'B のみ': 0, '両方': 0},
     }
     rows = build_region_summary_rows(metrics_by_region, 'A.xlsx', 'B.xlsx', b_filter_mode='全部')
 
-    # ヘッダー行（領域名は空欄）
-    assert rows[0] == {'項目': 'A ファイル名', '領域名': '', '値': 'A.xlsx'}
-    assert rows[1] == {'項目': 'B ファイル名', '領域名': '', '値': 'B.xlsx'}
-    assert rows[2] == {'項目': 'B 絞り込み条件', '領域名': '', '値': '全部'}
-    # 領域ごとに6項目ずつ、metrics_by_region の順で並ぶ
-    r1_rows = [r for r in rows if r['領域名'] == 'R1']
-    r2_rows = [r for r in rows if r['領域名'] == 'R2']
-    assert len(r1_rows) == 6
-    assert len(r2_rows) == 6
-    assert rows.index(r1_rows[0]) < rows.index(r2_rows[0])
-    assert {r['項目'] for r in r1_rows} == {
-        'A ユニークラベル数', 'B ユニークラベル数', 'A のみ', 'B のみ', '両方', 'ユニーク合計',
+    # 列順は 領域名・項目・値（領域名が先頭）。ヘッダー行は領域名が空欄
+    assert rows[0] == {'領域名': '', '項目': 'A ファイル名', '値': 'A.xlsx'}
+    assert rows[1] == {'領域名': '', '項目': 'B ファイル名', '値': 'B.xlsx'}
+    assert rows[2] == {'領域名': '', '項目': 'B 絞り込み条件', '値': '全部'}
+    # 領域ごとに5項目ずつ、metrics_by_region の順で並ぶ
+    r1_block = rows[3:8]
+    r2_block = rows[8:13]
+    assert len(rows) == 13
+    assert {r['項目'] for r in r1_block} == {
+        'A ユニークラベル数', 'B ユニークラベル数', 'A のみ', 'B のみ', '両方',
     }
+    assert {r['項目'] for r in r2_block} == {
+        'A ユニークラベル数', 'B ユニークラベル数', 'A のみ', 'B のみ', '両方',
+    }
+    # ブロック内は先頭行だけ領域名が入り、残りは空欄
+    assert r1_block[0]['領域名'] == 'R1'
+    assert all(r['領域名'] == '' for r in r1_block[1:])
+    assert r2_block[0]['領域名'] == 'R2'
+    assert all(r['領域名'] == '' for r in r2_block[1:])
 
 
 def test_build_region_summary_rows_without_filter_mode_omits_row():
