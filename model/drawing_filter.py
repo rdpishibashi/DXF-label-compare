@@ -42,3 +42,22 @@ def aggregate_filtered_rows(rows, selected_gzuban):
             continue
         agg[label] = agg.get(label, 0) + count
     return agg
+
+
+def aggregate_region_rows(rows, selected_gzuban):
+    """(領域名, ラベル, 個数, 図番リスト) のタプル列を集約し、
+    領域名 -> {ラベル: 合計個数} の2重dictを返す。
+
+    絞り込み方針は `aggregate_filtered_rows` と同じ（selected_gzuban が None なら
+    全件対象、集合の場合は図番リストとの重なりで行単位に採否を決め、個数は
+    絞り込み後も再計算しない）。領域名は指定領域での比較機能の「共通領域名」の
+    候補集合を作る側（呼び出し元）が別途 A/B の領域名集合の積を取るため、
+    ここでは行に含まれる領域名をそのまま使う。
+    """
+    result: dict = {}
+    for region, label, count, gzuban_list in rows:
+        if selected_gzuban is not None and not (set(gzuban_list) & selected_gzuban):
+            continue
+        region_dict = result.setdefault(region, {})
+        region_dict[label] = region_dict.get(label, 0) + count
+    return result

@@ -4,7 +4,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from model.drawing_filter import (
-    select_drawing_numbers, aggregate_filtered_rows,
+    select_drawing_numbers, aggregate_filtered_rows, aggregate_region_rows,
     FILTER_UNIT_ONLY, FILTER_UNIT_EXCLUDED, FILTER_ALL,
 )
 
@@ -80,3 +80,42 @@ def test_aggregate_filtered_rows_sums_duplicate_labels():
     selected = {'EE1', 'EE2'}
     result = aggregate_filtered_rows(rows, selected)
     assert result == {'CN1': 5}
+
+
+def test_aggregate_region_rows_groups_by_region_and_filters():
+    rows = [
+        ('R1', 'CN1', 5, ['EE1', 'EE3']),  # UNIT(EE1)と非UNIT(EE3)の両方
+        ('R1', 'R10', 2, ['EE3']),          # 非UNITのみ
+        ('R2', 'X1', 1, ['EE1']),           # 別領域、UNITのみ
+    ]
+    selected = {'EE1', 'EE2'}  # UNIT内結線図のみ選択時
+    result = aggregate_region_rows(rows, selected)
+    assert result == {'R1': {'CN1': 5}, 'R2': {'X1': 1}}
+
+
+def test_aggregate_region_rows_none_selection_includes_all():
+    rows = [
+        ('R1', 'CN1', 5, ['EE1']),
+        ('R1', 'R10', 2, []),
+    ]
+    result = aggregate_region_rows(rows, None)
+    assert result == {'R1': {'CN1': 5, 'R10': 2}}
+
+
+def test_aggregate_region_rows_sums_duplicate_label_within_same_region():
+    rows = [
+        ('R1', 'CN1', 2, ['EE1']),
+        ('R1', 'CN1', 3, ['EE2']),
+    ]
+    result = aggregate_region_rows(rows, {'EE1', 'EE2'})
+    assert result == {'R1': {'CN1': 5}}
+
+
+def test_aggregate_region_rows_same_label_kept_separate_across_regions():
+    # 同じラベルが複数領域に属す場合、各領域で独立して集計される
+    rows = [
+        ('R1', 'CN1', 3, ['EE1']),
+        ('R2', 'CN1', 7, ['EE1']),
+    ]
+    result = aggregate_region_rows(rows, None)
+    assert result == {'R1': {'CN1': 3}, 'R2': {'CN1': 7}}
