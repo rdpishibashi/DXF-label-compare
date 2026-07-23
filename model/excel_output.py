@@ -3,7 +3,10 @@ import io
 
 import pandas as pd
 
-from model.compare_labels import DIFF_COLUMNS, REGION_DIFF_COLUMNS, KUBUN_A_ONLY, KUBUN_B_ONLY, KUBUN_BOTH
+from model.compare_labels import (
+    DIFF_COLUMNS, REGION_DIFF_COLUMNS, KUBUN_A_ONLY, KUBUN_B_ONLY, KUBUN_BOTH,
+    blank_repeated_column,
+)
 
 _ROW_COLORS = {
     KUBUN_BOTH: {'bg_color': '#C6EFCE', 'font_color': '#006100'},
@@ -74,6 +77,11 @@ def _write_diff_sheet(writer, diff_df: pd.DataFrame, columns: list, header_fmt, 
     workbook = writer.book
     workbook.add_worksheet(sheet_name)
     ws = writer.sheets[sheet_name]
+
+    if '領域名' in columns:
+        # 同じ領域名が連続する行では2行目以降を空欄にする（サマリーシートと
+        # 同じ「見出し1回＋空欄」レイアウト、ユーザー指定）
+        diff_df = blank_repeated_column(diff_df, '領域名')
 
     for col_idx, col_name in enumerate(columns):
         ws.write(0, col_idx, col_name, header_fmt)

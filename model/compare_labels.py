@@ -54,8 +54,12 @@ def compare_labels(a: dict, b: dict) -> pd.DataFrame:
 def summarize_metrics(df: pd.DataFrame) -> dict:
     """区分カウントのみを返す（ファイル名等のヘッダー情報を含まない軽量版）。
 
-    'A ユニークラベル数'〜'ユニーク合計' の6項目。`summarize()` と
+    'A ユニークラベル数'〜'両方' の5項目。`summarize()` と
     `build_region_summary_rows()`（指定領域での比較、領域ごとの内訳）が共用する。
+
+    'ユニーク合計'（A のみ+B のみ+両方の総和）は、他の項目から機械的に
+    導出できる冗長な値で読み手の判断に寄与しないため出力しない
+    （ユーザー指摘、2026-07-23）。
     """
     a_only = int((df['区分'] == KUBUN_A_ONLY).sum())
     b_only = int((df['区分'] == KUBUN_B_ONLY).sum())
@@ -66,7 +70,6 @@ def summarize_metrics(df: pd.DataFrame) -> dict:
         'A のみ': a_only,
         'B のみ': b_only,
         '両方': both,
-        'ユニーク合計': len(df),
     }
 
 
@@ -113,24 +116,46 @@ def compare_labels_by_region(a_by_region: dict, b_by_region: dict, regions: list
     return diff_df, metrics_by_region
 
 
+def blank_repeated_column(df: pd.DataFrame, column: str) -> pd.DataFrame:
+    """表示専用: `column` の値が直前の行と同じ場合、その行では空欄にする。
+
+    `compare_labels_by_region()` は領域名ごとにまとまった連続ブロックで
+    行を返すため、同じ領域名が何行も連続する。ブロックの先頭行だけ領域名を
+    残し、残りを空欄にすることで「領域名列を先頭にし、繰り返しは空欄にする」
+    という見やすいレイアウト（`build_region_summary_rows()` と同じ方針）を
+    差分シート・画面表示の双方に適用する。呼び出し元の元データ（比較キーとして
+    領域名で絞り込む用途）は変えず、表示直前にのみ使うこと。
+    """
+    out = df.copy()
+    is_repeat = out[column] == out[column].shift()
+    out.loc[is_repeat, column] = ''
+    return out
+
+
 def build_region_summary_rows(
     metrics_by_region: dict, a_name: str, b_name: str, b_filter_mode: str = None,
 ) -> list:
     """領域名ごとの `summarize_metrics()` 結果から、サマリーシート用の行リスト
-    （項目・領域名・値の3キーを持つ dict のリスト）を構築する。
+    （領域名・項目・値の3キーを持つ dict のリスト）を構築する。
 
     metrics_by_region は表示したい順（`compare_labels_by_region()` の戻り値の
     2番目の要素）。先頭にファイル名等のヘッダー行（領域名は空欄）を置き、
-    続けて領域名ごとに6項目（A ユニークラベル数〜ユニーク合計）のブロックを
+    続けて領域名ごとに5項目（A ユニークラベル数〜両方）のブロックを
     metrics_by_region の順で並べる。
+
+    列順は `領域名`・`項目`・`値`（領域名を先頭にする）。各領域ブロックの
+    **先頭行だけ**領域名を入れ、同じブロック内の残り4行は空欄にする
+    （同じ領域名が5行連続で繰り返されるより、見出し1回＋空欄の方が読みやすい
+    というユーザー指定のレイアウト。添付サンプル `summary_sample.xlsx` に
+    準拠。Excel側は結合セルではなく単純な空欄——`openpyxl`で確認済み）。
     """
     rows = [
-        {'項目': 'A ファイル名', '領域名': '', '値': a_name},
-        {'項目': 'B ファイル名', '領域名': '', '値': b_name},
+        {'領域名': '', '項目': 'A ファイル名', '値': a_name},
+        {'領域名': '', '項目': 'B ファイル名', '値': b_name},
     ]
     if b_filter_mode is not None:
-        rows.append({'項目': 'B 絞り込み条件', '領域名': '', '値': b_filter_mode})
+        rows.append({'領域名': '', '項目': 'B 絞り込み条件', '値': b_filter_mode})
     for region, metrics in metrics_by_region.items():
-        for key, value in metrics.items():
-            rows.append({'項目': key, '領域名': region, '値': value})
+        for i, (key, value) in enumerate(metrics.items()):
+            rows.append({'領域名': region if i == 0 else '', '項目': key, '値': value})
     return rows

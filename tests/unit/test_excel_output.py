@@ -37,11 +37,13 @@ def test_create_region_compare_excel_output_sheets_and_columns():
 
     diff = xls.parse('差分')
     assert list(diff.columns) == ['領域名', 'ラベル', '区分', 'A個数', 'B個数']
-    assert (diff['領域名'] == 'R1').all()
+    # 同じ領域名が連続する行は2行目以降が空欄になる（先頭行だけ'R1'）
+    assert diff.iloc[0]['領域名'] == 'R1'
+    assert diff['領域名'].iloc[1:].isna().all()
 
     summ = xls.parse('サマリー')
-    assert list(summ.columns) == ['項目', '領域名', '値']
+    assert list(summ.columns) == ['領域名', '項目', '値']
     assert summ.iloc[0]['項目'] == 'A ファイル名'
     assert pd.isna(summ.iloc[0]['領域名'])  # ヘッダー行は領域名が空欄
-    region_rows = summ[summ['領域名'] == 'R1']
-    assert len(region_rows) == 6
+    assert summ.iloc[3]['領域名'] == 'R1'  # 領域ブロックの先頭行だけ領域名が入る
+    assert summ['領域名'].iloc[4:8].isna().all()
