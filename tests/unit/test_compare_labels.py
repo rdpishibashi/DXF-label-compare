@@ -5,7 +5,10 @@ import pandas as pd
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from model.compare_labels import normalize_label, compare_labels, summarize
+from model.compare_labels import (
+    normalize_label, compare_labels, summarize, summarize_metrics,
+    compare_labels_by_region, build_region_summary_rows, REGION_DIFF_COLUMNS,
+)
 
 
 def test_basic_kubun_assignment():
@@ -93,3 +96,89 @@ def test_summarize_includes_b_filter_mode_when_provided():
     # 挿入位置: B ファイル名の直後
     keys = list(summary.keys())
     assert keys.index('B 絞り込み条件') == keys.index('B ファイル名') + 1
+
+
+def test_summarize_metrics_matches_summarize_subset():
+    a = {'CN1': 2, 'R10': 1, 'ABC': 3}
+    b = {'CN1': 5, 'X1': 1, 'ABC': 4}
+    df = compare_labels(a, b)
+    metrics = summarize_metrics(df)
+    full = summarize(df, 'A.xlsx', 'B.xlsx')
+    for key in ('A ユニークラベル数', 'B ユニークラベル数', 'A のみ', 'B のみ', '両方', 'ユニーク合計'):
+        assert metrics[key] == full[key]
+
+
+def test_compare_labels_by_region_single_region():
+    a_by_region = {'R1': {'CN1': 2, 'R10': 1}}
+    b_by_region = {'R1': {'CN1': 5, 'X1': 1}}
+    diff_df, metrics = compare_labels_by_region(a_by_region, b_by_region, ['R1'])
+
+    assert list(diff_df.columns) == REGION_DIFF_COLUMNS
+    assert (diff_df['領域名'] == 'R1').all()
+    assert sorted(diff_df['ラベル']) == ['CN1', 'R10', 'X1']
+    assert metrics == {'R1': {
+        'A ユニークラベル数': 2, 'B ユニークラベル数': 2,
+        'A のみ': 1, 'B のみ': 1, '両方': 1, 'ユニーク合計': 3,
+    }}
+
+
+def test_compare_labels_by_region_multiple_regions_kept_separate():
+    a_by_region = {'R1': {'CN1': 1}, 'R2': {'CN1': 9}}
+    b_by_region = {'R1': {'CN1': 1}, 'R2': {}}
+    diff_df, metrics = compare_labels_by_region(a_by_region, b_by_region, ['R1', 'R2'])
+
+    # 同じラベルが2つの領域それぞれで独立した行として出力される
+    cn1_rows = diff_df[diff_df['ラベル'] == 'CN1']
+    assert len(cn1_rows) == 2
+    assert set(cn1_rows['領域名']) == {'R1', 'R2'}
+    r1_row = cn1_rows[cn1_rows['領域名'] == 'R1'].iloc[0]
+    assert r1_row['区分'] == '両方'
+    r2_row = cn1_rows[cn1_rows['領域名'] == 'R2'].iloc[0]
+    assert r2_row['区分'] == 'A のみ'
+    assert metrics['R1']['両方'] == 1
+    assert metrics['R2']['A のみ'] == 1
+    # regions の順（挿入順）で連結されること
+    assert list(diff_df['領域名'].unique()) == ['R1', 'R2']
+
+
+def test_compare_labels_by_region_missing_region_treated_as_empty():
+    # b_by_region に無い領域は空dict扱い（全ラベルが A のみになる）
+    a_by_region = {'R1': {'CN1': 1}}
+    b_by_region = {}
+    diff_df, metrics = compare_labels_by_region(a_by_region, b_by_region, ['R1'])
+    assert (diff_df['区分'] == 'A のみ').all()
+    assert metrics['R1']['B のみ'] == 0
+
+
+def test_compare_labels_by_region_empty_regions_list():
+    diff_df, metrics = compare_labels_by_region({}, {}, [])
+    assert list(diff_df.columns) == REGION_DIFF_COLUMNS
+    assert len(diff_df) == 0
+    assert metrics == {}
+
+
+def test_build_region_summary_rows_layout():
+    metrics_by_region = {
+        'R1': {'A ユニークラベル数': 2, 'B ユニークラベル数': 2, 'A のみ': 1, 'B のみ': 1, '両方': 1, 'ユニーク合計': 3},
+        'R2': {'A ユニークラベル数': 5, 'B ユニークラベル数': 0, 'A のみ': 5, 'B のみ': 0, '両方': 0, 'ユニーク合計': 5},
+    }
+    rows = build_region_summary_rows(metrics_by_region, 'A.xlsx', 'B.xlsx', b_filter_mode='全部')
+
+    # ヘッダー行（領域名は空欄）
+    assert rows[0] == {'項目': 'A ファイル名', '領域名': '', '値': 'A.xlsx'}
+    assert rows[1] == {'項目': 'B ファイル名', '領域名': '', '値': 'B.xlsx'}
+    assert rows[2] == {'項目': 'B 絞り込み条件', '領域名': '', '値': '全部'}
+    # 領域ごとに6項目ずつ、metrics_by_region の順で並ぶ
+    r1_rows = [r for r in rows if r['領域名'] == 'R1']
+    r2_rows = [r for r in rows if r['領域名'] == 'R2']
+    assert len(r1_rows) == 6
+    assert len(r2_rows) == 6
+    assert rows.index(r1_rows[0]) < rows.index(r2_rows[0])
+    assert {r['項目'] for r in r1_rows} == {
+        'A ユニークラベル数', 'B ユニークラベル数', 'A のみ', 'B のみ', '両方', 'ユニーク合計',
+    }
+
+
+def test_build_region_summary_rows_without_filter_mode_omits_row():
+    rows = build_region_summary_rows({'R1': summarize_metrics(compare_labels({}, {}))}, 'A.xlsx', 'B.xlsx')
+    assert 'B 絞り込み条件' not in {r['項目'] for r in rows if r['領域名'] == ''}

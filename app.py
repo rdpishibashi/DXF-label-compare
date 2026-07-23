@@ -1,13 +1,17 @@
 import streamlit as st
 import pandas as pd
 
-from model.excel_input import load_total_labels, load_total_rows, load_summary_titles
-from model.compare_labels import (
-    compare_labels, summarize, KUBUN_BOTH, KUBUN_A_ONLY, KUBUN_B_ONLY,
+from model.excel_input import (
+    load_total_labels, load_total_rows, load_summary_titles,
+    has_region_sheet, load_region_rows,
 )
-from model.excel_output import create_compare_excel_output
+from model.compare_labels import (
+    compare_labels, summarize, compare_labels_by_region, build_region_summary_rows,
+    KUBUN_BOTH, KUBUN_A_ONLY, KUBUN_B_ONLY,
+)
+from model.excel_output import create_compare_excel_output, create_region_compare_excel_output
 from model.drawing_filter import (
-    select_drawing_numbers, aggregate_filtered_rows,
+    select_drawing_numbers, aggregate_filtered_rows, aggregate_region_rows,
     FILTER_UNIT_ONLY, FILTER_OPTIONS,
 )
 from model.same_workbook import compare_within_workbook, list_label_sheets
@@ -87,6 +91,47 @@ def _show_same_workbook_comparison():
     )
 
 
+def _show_region_selection(file_a, file_b):
+    """A・B両方に『領域別ラベル一覧』シートがある場合のみ、『指定領域で比較する』
+    チェックボックスと共通領域名のマルチセレクトを表示する。
+
+    戻り値: (region_mode: bool, selected_regions: list, a_region_rows, b_region_rows)
+    region_mode が False の場合、残り3つは常に (False, [], None, None)。
+    """
+    a_bytes = file_a.getvalue()
+    b_bytes = file_b.getvalue()
+    if not (has_region_sheet(a_bytes) and has_region_sheet(b_bytes)):
+        return False, [], None, None
+
+    region_mode = st.checkbox(
+        "指定領域で比較する", key='region_mode_enabled',
+        help="A・B両方の『領域別ラベル一覧』シートを使い、選択した領域名だけを"
+             "対象にラベルを比較します（Total シート全体の比較は行いません）。",
+    )
+    if not region_mode:
+        return False, [], None, None
+
+    try:
+        a_region_rows = load_region_rows(a_bytes)
+        b_region_rows = load_region_rows(b_bytes)
+    except ValueError as error:
+        st.error(f"領域データの読み込みエラー: {error}")
+        return True, [], None, None
+
+    a_region_names = {r[0] for r in a_region_rows}
+    b_region_names = {r[0] for r in b_region_rows}
+    common_regions = sorted(a_region_names & b_region_names)
+    if not common_regions:
+        st.warning("A・Bに共通する領域名がありません。")
+        return True, [], a_region_rows, b_region_rows
+
+    selected_regions = st.multiselect(
+        "比較する領域名（A・Bに共通するものだけを表示・複数選択可）",
+        common_regions, key='selected_regions',
+    )
+    return True, selected_regions, a_region_rows, b_region_rows
+
+
 def _show_two_workbook_comparison():
     st.subheader("展開図-結線図比較")
     st.caption(
@@ -103,20 +148,40 @@ def _show_two_workbook_comparison():
             filter_mode = st.radio("対象範囲（Bのタイトルで絞り込み）", FILTER_OPTIONS, index=0,
                                    key='b_filter_mode', horizontal=True)
 
-    if st.button("展開図-結線図比較", type='primary', disabled=file_a is None or file_b is None,
+    region_mode, selected_regions, a_region_rows, b_region_rows = (False, [], None, None)
+    if file_a is not None and file_b is not None:
+        region_mode, selected_regions, a_region_rows, b_region_rows = _show_region_selection(
+            file_a, file_b)
+
+    run_disabled = file_a is None or file_b is None or (region_mode and not selected_regions)
+    if st.button("展開図-結線図比較", type='primary', disabled=run_disabled,
                  key='two_workbook_run'):
         try:
-            labels_a = load_total_labels(file_a.getvalue())
-            b_bytes = file_b.getvalue()
-            title_map = load_summary_titles(b_bytes)
-            total_rows_b = load_total_rows(b_bytes)
-            selected_gzuban = select_drawing_numbers(title_map, filter_mode)
-            labels_b = aggregate_filtered_rows(total_rows_b, selected_gzuban)
-            diff_df = compare_labels(labels_a, labels_b)
-            summary = summarize(diff_df, file_a.name, file_b.name, b_filter_mode=filter_mode)
+            if region_mode:
+                title_map = load_summary_titles(file_b.getvalue())
+                selected_gzuban = select_drawing_numbers(title_map, filter_mode)
+                a_by_region = aggregate_region_rows(a_region_rows, None)
+                b_by_region = aggregate_region_rows(b_region_rows, selected_gzuban)
+                diff_df, metrics_by_region = compare_labels_by_region(
+                    a_by_region, b_by_region, selected_regions)
+                summary = build_region_summary_rows(
+                    metrics_by_region, file_a.name, file_b.name, b_filter_mode=filter_mode)
+                st.session_state['two_workbook_output'] = create_region_compare_excel_output(
+                    diff_df, summary)
+            else:
+                labels_a = load_total_labels(file_a.getvalue())
+                b_bytes = file_b.getvalue()
+                title_map = load_summary_titles(b_bytes)
+                total_rows_b = load_total_rows(b_bytes)
+                selected_gzuban = select_drawing_numbers(title_map, filter_mode)
+                labels_b = aggregate_filtered_rows(total_rows_b, selected_gzuban)
+                diff_df = compare_labels(labels_a, labels_b)
+                summary = summarize(diff_df, file_a.name, file_b.name, b_filter_mode=filter_mode)
+                st.session_state['two_workbook_output'] = create_compare_excel_output(
+                    diff_df, summary)
             st.session_state['two_workbook_diff'] = diff_df
             st.session_state['two_workbook_summary'] = summary
-            st.session_state['two_workbook_output'] = create_compare_excel_output(diff_df, summary)
+            st.session_state['two_workbook_is_region_mode'] = region_mode
         except ValueError as error:
             st.error(f"読み込みエラー: {error}")
             return
@@ -125,12 +190,26 @@ def _show_two_workbook_comparison():
     if diff_df is None:
         return
     summary = st.session_state['two_workbook_summary']
+    is_region_mode = st.session_state.get('two_workbook_is_region_mode', False)
     st.divider()
     st.subheader("結果")
-    st.info(
-        f"A のみ: {summary['A のみ']}件　/　B のみ: {summary['B のみ']}件　/　"
-        f"両方: {summary['両方']}件　/　ユニーク合計: {summary['ユニーク合計']}件"
-    )
+    if is_region_mode:
+        metrics_rows = [row for row in summary if row['領域名']]
+        region_count = len(dict.fromkeys(row['領域名'] for row in metrics_rows))
+        totals = {}
+        for row in metrics_rows:
+            totals[row['項目']] = totals.get(row['項目'], 0) + row['値']
+        st.info(
+            f"対象領域: {region_count}件　/　"
+            f"A のみ: {totals.get('A のみ', 0)}件　/　B のみ: {totals.get('B のみ', 0)}件　/　"
+            f"両方: {totals.get('両方', 0)}件　/　ユニーク合計: {totals.get('ユニーク合計', 0)}件"
+        )
+        st.dataframe(pd.DataFrame(summary), width='stretch', hide_index=True)
+    else:
+        st.info(
+            f"A のみ: {summary['A のみ']}件　/　B のみ: {summary['B のみ']}件　/　"
+            f"両方: {summary['両方']}件　/　ユニーク合計: {summary['ユニーク合計']}件"
+        )
     st.dataframe(_for_display(diff_df).style.apply(_row_style, axis=1), width='stretch', hide_index=True)
     st.download_button(
         label="Excelをダウンロード", data=st.session_state['two_workbook_output'],
