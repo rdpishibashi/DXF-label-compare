@@ -39,6 +39,20 @@ def _for_display(diff_df):
     return disp
 
 
+def _region_summary_for_display(summary):
+    """画面表示用: `build_region_summary_rows()` の行データを DataFrame 化する。
+
+    『値』列はファイル名等の文字列と集計件数の整数が混在する object dtype に
+    なるため、st.dataframe（Arrow経由の描画）に渡すと
+    `pyarrow.lib.ArrowTypeError` が発生する（コンソールに出るだけで自動
+    フォールバックにより見た目上は動作するが、コンソールを汚す）。表示直前に
+    文字列化して回避する。Excel出力用の `summary`（生データ）はそのまま変更しない。
+    """
+    disp = pd.DataFrame(summary)
+    disp['値'] = disp['値'].astype(str)
+    return disp
+
+
 def _show_same_workbook_comparison():
     st.subheader("結線図-組立図比較")
     st.caption(
@@ -206,7 +220,7 @@ def _show_two_workbook_comparison():
             f"A のみ: {totals.get('A のみ', 0)}件　/　B のみ: {totals.get('B のみ', 0)}件　/　"
             f"両方: {totals.get('両方', 0)}件"
         )
-        st.dataframe(pd.DataFrame(summary), width='stretch', hide_index=True)
+        st.dataframe(_region_summary_for_display(summary), width='stretch', hide_index=True)
     else:
         st.info(
             f"A のみ: {summary['A のみ']}件　/　B のみ: {summary['B のみ']}件　/　"

@@ -706,6 +706,34 @@ v1.9.10を参照）。
 全件pass。実アプリで実際にExcelをダウンロードし、`openpyxl`で列順・
 空欄化パターンを検証済み。
 
+## 18. 指定領域比較サマリー表示のArrowシリアライズエラーを修正（2026-07-27）
+
+ユーザー報告: 「展開図-結線図比較」タブで「指定領域で比較する」ONの実行時、動作は
+するがコンソールに `pyarrow.lib.ArrowTypeError: ("Expected bytes, got a 'int' object",
+'Conversion failed for column 値 with type object')` が出力される。
+
+**原因**: `build_region_summary_rows()`（`model/compare_labels.py`）が返す行データの
+`値` 列は、ファイル名等の文字列（`A ファイル名`・`B 絞り込み条件`）と集計件数の整数
+（`A のみ`・`両方` 等）が混在する `object` dtype になる。`app.py` の結果表示
+（旧コード: `st.dataframe(pd.DataFrame(summary), ...)`）がこれをそのまま
+Arrow変換しようとして失敗していた（Streamlitの自動フォールバックにより見た目上は
+動作するが、コンソールにトレースバックが出続ける）。
+
+**対策**: `app.py` に表示専用ヘルパー `_region_summary_for_display()` を追加し、
+`値` 列を表示直前にのみ `str` 化してから `st.dataframe` に渡すよう変更（既存の
+`_for_display()` と同じ「表示専用コピーを作る」方針）。Excel出力用の `summary`
+（`create_region_compare_excel_output()` に渡す生データ）は変更していない。
+
+pyarrow レベルで修正前後の挙動を再現・確認（`pa.Table.from_pandas()` が修正前は
+`ArrowTypeError` を送出し、修正後は成功することをスクリプトで確認）。既存の
+`app.py` はView層としてユニットテスト対象外のプロジェクト方針のため、新規の
+pytestは追加せず、実アプリのブラウザ動作確認（コンソールにエラーが出ないこと）で
+検証した。既存単体テスト35件は無回帰（全件pass）。
+
+同種の「`object` dtype の列に文字列と数値が混在すると `st.dataframe` の
+Arrow変換が失敗する」という知見は、`~/.claude/skills/streamlit/SKILL.md`
+（§9 pandas の安全パターン / §13 よくある落とし穴）にも反映した。
+
 ---
 
 *作成: 2026-07-12 / Phase 1 担当（Opus）→ Phase 2 以降担当（sonnet）への引き継ぎ*
@@ -719,3 +747,4 @@ dxf-new-project-scaffolding スキルの `model/` 命名反映*
 既存4モジュールの拡張のみ、新規モジュールなし*
 *2026-07-23: ダウンロードボタンの幅修正・「ユニーク合計」削除・サマリー/差分
 シートのレイアウト改善（§17）*
+*2026-07-27: 指定領域比較サマリー表示のArrowシリアライズエラーを修正（§18）*
