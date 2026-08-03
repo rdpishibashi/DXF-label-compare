@@ -434,7 +434,7 @@ st.dataframe(styled, width='stretch', hide_index=True)
   でも同様に抑制不可）。`A個数`/`B個数` を `pandas.Int64`（nullable整数型）にした上で、
   **画面表示専用**に文字列化したコピー（欠損は空文字）を作り、それを `st.dataframe` に
   渡す方式で解決した（`app.py` の `_for_display()`）。Excel 出力（`write_blank` 使用）
-  は最初から正しく空欄だったため影響なし。詳細は README.md「既知の制約」を参照。
+  は最初から正しく空欄だったため影響なし。
   - トレードオフ: 表示用コピーは文字列列になるため、数値の右寄せ（CSS
     `text-align: right` は `st.dataframe` の Styler 経由では反映されない）は効かず
     左寄せになる。spec に右寄せの明示要件は無かったため許容した。
