@@ -6,7 +6,10 @@ import pandas as pd
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from model.compare_labels import compare_labels, summarize, compare_labels_by_region, build_region_summary_rows
+from model.compare_labels import (
+    compare_labels, summarize, compare_labels_by_region, build_region_summary_rows, row_style,
+    ROW_STYLE_A_ONLY, ROW_STYLE_B_ONLY, ROW_STYLE_MATCH, ROW_STYLE_MISMATCH,
+)
 from model.excel_output import create_compare_excel_output, create_region_compare_excel_output
 
 
@@ -23,6 +26,32 @@ def test_create_compare_excel_output_sheets_and_columns():
     # A のみのラベル(R10)はB個数が空欄(NaN)
     r10 = diff[diff['ラベル'] == 'R10'].iloc[0]
     assert pd.isna(r10['B個数'])
+
+
+def test_create_compare_excel_output_row_styles_cover_all_combinations():
+    # 区分×個数一致/不一致の組み合わせが全て1つのdiff_dfに現れることを確認する
+    # （青=Aのみ・緑=Bのみ・黄=両方だが個数不一致・無色=両方かつ個数一致）。
+    # Excel自体のセル色はxlsxwriterの書式でopenpyxl読み込み時には検証できないため、
+    # ここでは compare_excel_output が例外なく全区分を書き出せることと、
+    # row_style() が各行に期待どおりの表示区分を割り当てることを確認する。
+    df = compare_labels(
+        {'MATCH': 3, 'MISMATCH': 1, 'A_ONLY': 2},
+        {'MATCH': 3, 'MISMATCH': 99, 'B_ONLY': 5},
+    )
+    summary = summarize(df, 'A.xlsx', 'B.xlsx')
+    xlsx_bytes = create_compare_excel_output(df, summary)
+    xls = pd.ExcelFile(io.BytesIO(xlsx_bytes))
+    diff = xls.parse('差分')
+    assert len(diff) == 4
+
+    styles = {
+        row['ラベル']: row_style(row['区分'], row['A個数'], row['B個数'])
+        for _, row in diff.iterrows()
+    }
+    assert styles['A_ONLY'] == ROW_STYLE_A_ONLY
+    assert styles['B_ONLY'] == ROW_STYLE_B_ONLY
+    assert styles['MATCH'] == ROW_STYLE_MATCH
+    assert styles['MISMATCH'] == ROW_STYLE_MISMATCH
 
 
 def test_create_region_compare_excel_output_sheets_and_columns():

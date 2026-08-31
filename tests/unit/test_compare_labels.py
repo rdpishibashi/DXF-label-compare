@@ -8,6 +8,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from model.compare_labels import (
     normalize_label, compare_labels, summarize, summarize_metrics,
     compare_labels_by_region, build_region_summary_rows, REGION_DIFF_COLUMNS,
+    row_style, ROW_STYLE_A_ONLY, ROW_STYLE_B_ONLY, ROW_STYLE_MATCH, ROW_STYLE_MISMATCH,
+    KUBUN_A_ONLY, KUBUN_B_ONLY, KUBUN_BOTH,
 )
 
 
@@ -188,3 +190,33 @@ def test_build_region_summary_rows_layout():
 def test_build_region_summary_rows_without_filter_mode_omits_row():
     rows = build_region_summary_rows({'R1': summarize_metrics(compare_labels({}, {}))}, 'A.xlsx', 'B.xlsx')
     assert 'B 絞り込み条件' not in {r['項目'] for r in rows if r['領域名'] == ''}
+
+
+# row_style(): 区分 × 個数一致/不一致 の組み合わせ（青=Aのみ／緑=Bのみ／
+# 黄=両方だが個数不一致／無色=両方かつ個数一致）。区分が『A のみ』『B のみ』の
+# 場合は個数の値に関わらず短絡することも確認する。
+def test_row_style_a_only_ignores_counts():
+    assert row_style(KUBUN_A_ONLY, 3, pd.NA) == ROW_STYLE_A_ONLY
+    assert row_style(KUBUN_A_ONLY, 0, 0) == ROW_STYLE_A_ONLY
+
+
+def test_row_style_b_only_ignores_counts():
+    assert row_style(KUBUN_B_ONLY, pd.NA, 3) == ROW_STYLE_B_ONLY
+    assert row_style(KUBUN_B_ONLY, 0, 0) == ROW_STYLE_B_ONLY
+
+
+def test_row_style_both_matching_counts_is_match():
+    assert row_style(KUBUN_BOTH, 5, 5) == ROW_STYLE_MATCH
+    assert row_style(KUBUN_BOTH, 0, 0) == ROW_STYLE_MATCH
+
+
+def test_row_style_both_mismatched_counts_is_mismatch():
+    assert row_style(KUBUN_BOTH, 1, 99) == ROW_STYLE_MISMATCH
+    assert row_style(KUBUN_BOTH, 99, 1) == ROW_STYLE_MISMATCH
+
+
+def test_row_style_both_with_missing_count_is_mismatch():
+    # 区分が『両方』なのに片方の個数が欠損している状態は本来生じないが、
+    # 防御的に不一致（黄）として扱う。
+    assert row_style(KUBUN_BOTH, pd.NA, 5) == ROW_STYLE_MISMATCH
+    assert row_style(KUBUN_BOTH, 5, pd.NA) == ROW_STYLE_MISMATCH

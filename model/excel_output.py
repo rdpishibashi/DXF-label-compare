@@ -4,22 +4,16 @@ import io
 import pandas as pd
 
 from model.compare_labels import (
-    DIFF_COLUMNS, REGION_DIFF_COLUMNS, KUBUN_A_ONLY, KUBUN_B_ONLY, KUBUN_BOTH,
-    blank_repeated_column,
+    DIFF_COLUMNS, REGION_DIFF_COLUMNS, blank_repeated_column, row_style, ROW_STYLE_COLORS,
 )
-
-_ROW_COLORS = {
-    KUBUN_BOTH: {'bg_color': '#C6EFCE', 'font_color': '#006100'},
-    KUBUN_A_ONLY: {'bg_color': '#D9E1F2', 'font_color': '#1F4E79'},
-    KUBUN_B_ONLY: {'bg_color': '#E2CFC0', 'font_color': '#7F4F24'},
-}
 
 
 def create_compare_excel_output(diff_df: pd.DataFrame, summary: dict) -> bytes:
     """サマリーシートと差分シートを持つ Excel ファイルを bytes で返す。
 
     シート順: サマリー → 差分。
-    差分シートは区分（両方/A のみ/B のみ）ごとに行全体を色分けする。
+    差分シートは表示スタイル区分（青=Aのみ／緑=Bのみ／黄=両方だが個数不一致／
+    無色=両方かつ個数一致）ごとに行全体を色分けする（`model.compare_labels.row_style()`）。
     A個数・B個数 が pd.NA の場合は空欄セルとして書き込む（0 とは区別する）。
     """
     summary_rows = [{'項目': k, '値': v} for k, v in summary.items()]
@@ -45,8 +39,8 @@ def _create_excel_output(diff_df: pd.DataFrame, summary_rows: list, diff_columns
             'bold': True, 'bg_color': '#4472C4', 'font_color': 'white', 'border': 1,
         })
         row_formats = {
-            kubun: workbook.add_format({**style, 'border': 1})
-            for kubun, style in _ROW_COLORS.items()
+            style_key: workbook.add_format({**(color or {}), 'border': 1})
+            for style_key, color in ROW_STYLE_COLORS.items()
         }
 
         _write_summary_sheet(writer, summary_rows, header_fmt)
@@ -92,7 +86,7 @@ def _write_diff_sheet(writer, diff_df: pd.DataFrame, columns: list, header_fmt, 
 
     for row_idx, row in enumerate(diff_df.itertuples(index=False), start=1):
         values = list(row)
-        fmt = row_formats[values[kubun_idx]]
+        fmt = row_formats[row_style(values[kubun_idx], values[a_idx], values[b_idx])]
         for col_idx, value in enumerate(values):
             if col_idx in (a_idx, b_idx):
                 if pd.notna(value):

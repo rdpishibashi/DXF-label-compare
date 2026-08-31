@@ -7,7 +7,7 @@ from model.excel_input import (
 )
 from model.compare_labels import (
     compare_labels, summarize, compare_labels_by_region, build_region_summary_rows,
-    blank_repeated_column, KUBUN_BOTH, KUBUN_A_ONLY, KUBUN_B_ONLY,
+    blank_repeated_column, row_style, ROW_STYLE_COLORS,
 )
 from model.excel_output import create_compare_excel_output, create_region_compare_excel_output
 from model.drawing_filter import (
@@ -19,14 +19,18 @@ from model.same_workbook_output import create_same_workbook_output
 
 st.set_page_config(page_title="DXF Label Compare", page_icon="🔍", layout="wide")
 
-_BG = {KUBUN_BOTH: '#C6EFCE', KUBUN_A_ONLY: '#D9E1F2', KUBUN_B_ONLY: '#E2CFC0'}
-_FG = {KUBUN_BOTH: '#006100', KUBUN_A_ONLY: '#1F4E79', KUBUN_B_ONLY: '#7F4F24'}
-
-
-def _row_style(row):
-    kubun = row['区分']
-    css = f'background-color: {_BG[kubun]}; color: {_FG[kubun]}'
-    return [css] * len(row)
+def _row_style_factory(diff_df):
+    """`_for_display()` は A個数/B個数 を表示用文字列に変換するため、色分けの
+    判定（`row_style()`、個数の一致比較を含む）は変換前の元データを使う。
+    `.style.apply` に渡す行（表示用DataFrameの行）とはインデックスで対応させる。
+    """
+    def _row_style(row):
+        raw = diff_df.loc[row.name]
+        style_key = row_style(raw['区分'], raw['A個数'], raw['B個数'])
+        colors = ROW_STYLE_COLORS[style_key]
+        css = f"background-color: {colors['bg_color']}; color: {colors['font_color']}" if colors else ''
+        return [css] * len(row)
+    return _row_style
 
 
 def _for_display(diff_df):
@@ -226,7 +230,10 @@ def _show_two_workbook_comparison():
             f"A のみ: {summary['A のみ']}件　/　B のみ: {summary['B のみ']}件　/　"
             f"両方: {summary['両方']}件"
         )
-    st.dataframe(_for_display(diff_df).style.apply(_row_style, axis=1), width='stretch', hide_index=True)
+    st.dataframe(
+        _for_display(diff_df).style.apply(_row_style_factory(diff_df), axis=1),
+        width='stretch', hide_index=True,
+    )
     st.download_button(
         label="Excelをダウンロード", data=st.session_state['two_workbook_output'],
         file_name="label_compare.xlsx",
