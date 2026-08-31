@@ -9,20 +9,17 @@ import io
 
 import pandas as pd
 
-DIFF_COLUMNS = ["ラベル", "A 合計出現数", "A 図番数", "B 出現数", "A 図番", "比較結果"]
+from model.compare_labels import row_style, ROW_STYLE_COLORS
 
-_ROW_COLORS = {
-    "両方": {'bg_color': '#C6EFCE', 'font_color': '#006100'},
-    "A のみ": {'bg_color': '#D9E1F2', 'font_color': '#1F4E79'},
-    "B のみ": {'bg_color': '#E2CFC0', 'font_color': '#7F4F24'},
-}
+DIFF_COLUMNS = ["ラベル", "A 合計出現数", "A 図番数", "B 出現数", "A 図番", "比較結果"]
 
 
 def create_same_workbook_output(result: dict) -> bytes:
     """サマリーシートと差分シートを持つ Excel ファイルを bytes で返す。
 
     シート順: サマリー → 差分。
-    差分シートは区分（両方/A のみ/B のみ）ごとに行全体を色分けする。
+    差分シートは表示スタイル区分（青=Aのみ／緑=Bのみ／黄=両方だが個数不一致／
+    無色=両方かつ個数一致）ごとに行全体を色分けする（`model.compare_labels.row_style()`）。
     """
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -32,8 +29,8 @@ def create_same_workbook_output(result: dict) -> bytes:
             'bold': True, 'bg_color': '#4472C4', 'font_color': 'white', 'border': 1,
         })
         row_formats = {
-            kubun: workbook.add_format({**style, 'border': 1})
-            for kubun, style in _ROW_COLORS.items()
+            style_key: workbook.add_format({**(color or {}), 'border': 1})
+            for style_key, color in ROW_STYLE_COLORS.items()
         }
 
         _write_summary_sheet(writer, result['summary'], header_fmt)
@@ -64,7 +61,7 @@ def _write_diff_sheet(writer, workbook, comparison_df: pd.DataFrame, header_fmt,
 
     for row_idx, row in enumerate(comparison_df.itertuples(index=False), start=1):
         label, a_count, a_drawing_count, b_count, a_drawings, kubun = row
-        fmt = row_formats[kubun]
+        fmt = row_formats[row_style(kubun, a_count, b_count)]
         ws.write(row_idx, 0, label, fmt)
         ws.write_number(row_idx, 1, int(a_count), fmt)
         ws.write_number(row_idx, 2, int(a_drawing_count), fmt)
